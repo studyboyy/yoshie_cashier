@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +14,7 @@ import '../models/user_profile.dart';
 import '../services/api_client.dart';
 import '../services/app_update_service.dart';
 import '../services/cart_draft_store.dart';
+import '../services/favorite_product_store.dart';
 import '../services/offline_catalog_store.dart';
 import '../services/offline_sale_queue.dart';
 import '../services/pin_lock_service.dart';
@@ -60,7 +62,8 @@ class CashierHomeScreen extends StatefulWidget {
   State<CashierHomeScreen> createState() => _CashierHomeScreenState();
 }
 
-class _CashierHomeScreenState extends State<CashierHomeScreen> {
+class _CashierHomeScreenState extends State<CashierHomeScreen>
+    with WidgetsBindingObserver {
   final _searchController = TextEditingController();
   final _customerSearchController = TextEditingController();
   final _paidController = TextEditingController();
@@ -70,6 +73,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
   final _offlineQueue = OfflineSaleQueue();
   final _offlineCatalogStore = OfflineCatalogStore();
   final _pinLockService = PinLockService();
+  final _favoriteProductStore = const FavoriteProductStore();
   final _cartDraftStore = const CartDraftStore();
   final _receiptPrinter = ThermalReceiptPrinter();
   final _cartController = CashierCartController();
@@ -80,11 +84,13 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
   Timer? _searchDebounce;
   Timer? _customerDebounce;
   Timer? _offlineSyncTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   CashierBootstrap? _bootstrap;
   CashierShiftInfo? _activeShift;
   PaymentMethod? _selectedPaymentMethod;
   CashierCustomer? _selectedCustomer;
+  List<CashierProduct> _favoriteProducts = <CashierProduct>[];
 
   bool _loading = true;
   bool _checkoutLoading = false;
@@ -93,6 +99,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
   bool _paymentSheetOpen = false;
   bool _pinLockEnabled = false;
   bool _appLocked = false;
+  bool _wasOffline = false;
+  bool _pinLockPromptScheduled = false;
   bool _manualSearchKeyboard = false;
   bool _restoringCartDraft = true;
   int _selectedTab = 1;
@@ -126,6 +134,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lookupController = CashierLookupController(api: widget.api);
     _checkoutController = CashierCheckoutController(
       api: widget.api,
@@ -141,9 +150,11 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
     _lookupController.addListener(_onLookupChanged);
     _restoreCartDraft();
     _refreshOfflineCount();
-    _loadPinLockStatus();
+    _loadPinLockStatus(lockIfEnabled: true);
+    _startConnectivityAutoSync();
     _startOfflineAutoSync();
     _loadBootstrap();
+    unawaited(_loadFavoriteProducts());
     _refocusSearch();
   }
 
@@ -159,10 +170,25 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      if (_pinLockEnabled && !_appLocked) {
+        _schedulePinLock();
+      }
+
+      unawaited(_syncOfflineQueue(silent: true));
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchDebounce?.cancel();
     _customerDebounce?.cancel();
     _offlineSyncTimer?.cancel();
+    _connectivitySubscription?.cancel();
     _messageTimer?.cancel();
     _searchController.dispose();
     _customerSearchController.dispose();
@@ -226,6 +252,33 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
 
       unawaited(_syncOfflineQueue(silent: true));
     });
+  }
+
+  void _startConnectivityAutoSync() {
+    _connectivitySubscription?.cancel();
+    final connectivity = Connectivity();
+    _connectivitySubscription = connectivity.onConnectivityChanged.listen((
+      results,
+    ) {
+      final isOffline =
+          results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+      final cameBackOnline = _wasOffline && !isOffline;
+      _wasOffline = isOffline;
+
+      if (cameBackOnline) {
+        unawaited(_syncOfflineQueue(silent: true));
+        unawaited(_loadBootstrap());
+        unawaited(_loadFavoriteProducts());
+      }
+    });
+
+    unawaited(
+      connectivity.checkConnectivity().then((results) {
+        _wasOffline =
+            results.isEmpty ||
+            results.every((r) => r == ConnectivityResult.none);
+      }),
+    );
   }
 
   Timer? _messageTimer;
@@ -412,13 +465,32 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
     setState(() => _offlinePendingCount = count);
   }
 
-  Future<void> _loadPinLockStatus() async {
+  Future<void> _loadPinLockStatus({bool lockIfEnabled = false}) async {
     final enabled = await _pinLockService.isEnabled();
     if (!mounted) {
       return;
     }
 
     setState(() => _pinLockEnabled = enabled);
+    if (enabled && lockIfEnabled) {
+      _schedulePinLock();
+    }
+  }
+
+  void _schedulePinLock() {
+    if (_pinLockPromptScheduled || _appLocked) {
+      return;
+    }
+
+    _pinLockPromptScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pinLockPromptScheduled = false;
+      if (!mounted || !_pinLockEnabled || _appLocked) {
+        return;
+      }
+
+      unawaited(_lockApp());
+    });
   }
 
   Future<void> _syncOfflineQueue({bool silent = false}) async {
@@ -483,6 +555,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
 
       unawaited(_loadShift(silent: true));
       unawaited(widget.api.refreshOfflineCatalog());
+      unawaited(_loadFavoriteProducts());
       unawaited(_syncOfflineQueue(silent: true));
       if (_selectedTab == 1) {
         _refocusSearch();
@@ -512,6 +585,40 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
     } finally {
       if (mounted && !silent) {
         setState(() => _loadingShift = false);
+      }
+    }
+  }
+
+  Future<void> _loadFavoriteProducts() async {
+    try {
+      final ids = await _favoriteProductStore.ids();
+      if (ids.isEmpty) {
+        if (mounted) {
+          setState(() => _favoriteProducts = <CashierProduct>[]);
+        }
+        return;
+      }
+
+      final products = await widget.api.availableProducts();
+      final availableById = {
+        for (final product in products)
+          if (product.stock > 0) product.id: product,
+      };
+      await _favoriteProductStore.prune(availableById.keys.toSet());
+      final favoriteProducts = ids
+          .map((id) => availableById[id])
+          .whereType<CashierProduct>()
+          .take(FavoriteProductStore.maxFavorites)
+          .toList();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _favoriteProducts = favoriteProducts);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _favoriteProducts = <CashierProduct>[]);
       }
     }
   }
@@ -1248,6 +1355,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
       searching: _searching,
       searchingCustomer: _searchingCustomer,
       products: _products,
+      favoriteProducts: _favoriteProducts,
       customers: _customers,
       selectedCustomer: _selectedCustomer,
       cart: _cart,
@@ -1297,18 +1405,25 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
       offlinePendingCount: _offlinePendingCount,
       onOpenAvailableProducts: _openAvailableProducts,
       onCashier: () => _selectTab(1),
-      onTransactions: () => _selectTab(2),
-      onShift: () => _selectTab(3),
+      onTransactions: () => _selectTab(3),
+      onShift: () => _selectTab(4),
       onSync: _offlinePendingCount > 0 ? _syncOfflineQueue : null,
     );
   }
 
-  void _openAvailableProducts() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AvailableProductsScreen(api: widget.api),
+  Future<void> _openAvailableProducts() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => AvailableProductsScreen(
+          api: widget.api,
+          favoriteStore: _favoriteProductStore,
+        ),
       ),
     );
+
+    if (changed == true) {
+      await _loadFavoriteProducts();
+    }
   }
 
   Widget _transactionsPage() {
@@ -1341,6 +1456,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
       onSyncOffline: _syncOfflineQueue,
       onOpenOfflineCenter: _openOfflineCenter,
       onRefreshData: _loadBootstrap,
+      onCheckServer: _checkServerConnection,
       onCheckUpdate: _checkAppUpdateManually,
       pinLockEnabled: _pinLockEnabled,
       onConfigurePinLock: _configurePinLock,
@@ -1438,6 +1554,28 @@ class _CashierHomeScreenState extends State<CashierHomeScreen> {
         return;
       }
       _showMessage(error.toString(), isError: true);
+    }
+  }
+
+  Future<void> _checkServerConnection() async {
+    _showMessage('Mengecek koneksi server...', isError: false);
+
+    try {
+      await widget.api.me();
+      await _loadBootstrap();
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage('Server online dan sesi kasir aktif.', isError: false);
+    } on UnauthorizedException {
+      widget.onUnauthorized?.call();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage('Cek server gagal: $error', isError: true);
     }
   }
 

@@ -274,6 +274,7 @@ class RecentSale {
     this.paidAt,
     this.customer,
     this.paymentMethod,
+    this.items = const <RecentSaleItem>[],
   });
 
   final int id;
@@ -284,6 +285,7 @@ class RecentSale {
   final double paidAmount;
   final double changeAmount;
   final String? paymentMethod;
+  final List<RecentSaleItem> items;
 
   factory RecentSale.fromJson(Map<String, dynamic> json) {
     return RecentSale(
@@ -295,6 +297,33 @@ class RecentSale {
       paidAmount: _asDouble(json['paid_amount']),
       changeAmount: _asDouble(json['change_amount']),
       paymentMethod: json['payment_method'] as String?,
+      items: (json['items'] as List<dynamic>? ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(RecentSaleItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class RecentSaleItem {
+  const RecentSaleItem({
+    required this.productName,
+    required this.quantity,
+    required this.unitPrice,
+    required this.subtotal,
+  });
+
+  final String productName;
+  final int quantity;
+  final double unitPrice;
+  final double subtotal;
+
+  factory RecentSaleItem.fromJson(Map<String, dynamic> json) {
+    return RecentSaleItem(
+      productName: json['product_name'] as String? ?? '-',
+      quantity: _asInt(json['quantity']),
+      unitPrice: _asDouble(json['unit_price']),
+      subtotal: _asDouble(json['subtotal']),
     );
   }
 }

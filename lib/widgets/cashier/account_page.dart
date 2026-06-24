@@ -18,6 +18,7 @@ class CashierAccountPage extends StatelessWidget {
     required this.onSyncOffline,
     required this.onOpenOfflineCenter,
     required this.onRefreshData,
+    required this.onCheckServer,
     required this.onCheckUpdate,
     required this.pinLockEnabled,
     required this.onConfigurePinLock,
@@ -35,6 +36,7 @@ class CashierAccountPage extends StatelessWidget {
   final VoidCallback onSyncOffline;
   final VoidCallback onOpenOfflineCenter;
   final VoidCallback onRefreshData;
+  final VoidCallback onCheckServer;
   final VoidCallback onCheckUpdate;
   final bool pinLockEnabled;
   final VoidCallback onConfigurePinLock;
@@ -253,6 +255,13 @@ class CashierAccountPage extends StatelessWidget {
               ),
               const Divider(height: 1),
               ActionRow(
+                icon: Icons.health_and_safety_outlined,
+                label: 'Cek koneksi server',
+                value: 'Tes',
+                onTap: onCheckServer,
+              ),
+              const Divider(height: 1),
+              ActionRow(
                 icon: Icons.system_update_alt,
                 label: 'Cek update APK',
                 value: 'Versi',
@@ -261,7 +270,9 @@ class CashierAccountPage extends StatelessWidget {
               const Divider(height: 1),
               ActionRow(
                 icon: Icons.lock_outline,
-                label: pinLockEnabled ? 'Ubah PIN aplikasi' : 'Atur PIN aplikasi',
+                label: pinLockEnabled
+                    ? 'Ubah PIN aplikasi'
+                    : 'Atur PIN aplikasi',
                 value: pinLockEnabled ? 'Aktif' : 'Nonaktif',
                 onTap: onConfigurePinLock,
               ),

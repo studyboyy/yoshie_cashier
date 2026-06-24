@@ -16,6 +16,7 @@ class CashierProductPanel extends StatelessWidget {
     required this.manualSearchKeyboard,
     required this.searching,
     required this.products,
+    required this.favoriteProducts,
     required this.message,
     required this.messageIsError,
     required this.onSearchTap,
@@ -31,6 +32,7 @@ class CashierProductPanel extends StatelessWidget {
   final bool manualSearchKeyboard;
   final bool searching;
   final List<CashierProduct> products;
+  final List<CashierProduct> favoriteProducts;
   final String? message;
   final bool messageIsError;
   final VoidCallback onSearchTap;
@@ -41,6 +43,14 @@ class CashierProductPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final searchQuery = searchController.text.trim();
+    final showSearchResults = searchQuery.isNotEmpty && products.isNotEmpty;
+    final mainProducts = searchQuery.isEmpty ? favoriteProducts : products;
+    final mainTitle = searchQuery.isEmpty ? 'Produk Favorit' : 'Produk';
+    final mainCount = searchQuery.isEmpty
+        ? '${favoriteProducts.length}/5'
+        : '${products.length} hasil';
+
     return AppSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -113,19 +123,29 @@ class CashierProductPanel extends StatelessWidget {
             MessageBanner(message: message!, isError: messageIsError),
           ],
           const SizedBox(height: 14),
+          if (showSearchResults) ...[
+            _FloatingSearchResults(
+              products: products,
+              onProductTap: onProductTap,
+            ),
+            const SizedBox(height: 14),
+          ],
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Produk',
+                  mainTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                '${products.length} hasil',
+                mainCount,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -139,22 +159,27 @@ class CashierProductPanel extends StatelessWidget {
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
-              child: products.isEmpty
-                  ? const EmptyState(
-                      key: ValueKey('empty-products'),
-                      text:
-                          'Cari produk atau scan barcode untuk mulai transaksi.',
+              child: mainProducts.isEmpty
+                  ? EmptyState(
+                      key: ValueKey(
+                        searchQuery.isEmpty
+                            ? 'empty-favorites'
+                            : 'empty-products',
+                      ),
+                      text: searchQuery.isEmpty
+                          ? 'Belum ada produk favorit. Buka daftar produk cabang lalu pilih ikon bintang.'
+                          : 'Produk tidak ditemukan.',
                     )
                   : ListView.separated(
                       key: ValueKey(
-                        'products-${products.length}-${searchController.text}',
+                        'products-${mainProducts.length}-$searchQuery',
                       ),
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: products.length,
+                      itemCount: mainProducts.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
-                        final product = products[index];
+                        final product = mainProducts[index];
                         return ProductTile(
                           product: product,
                           onTap: product.stock <= 0
@@ -166,6 +191,49 @@ class CashierProductPanel extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FloatingSearchResults extends StatelessWidget {
+  const _FloatingSearchResults({
+    required this.products,
+    required this.onProductTap,
+  });
+
+  final List<CashierProduct> products;
+  final ValueChanged<CashierProduct> onProductTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleProducts = products.take(5).toList();
+
+    return Material(
+      elevation: 10,
+      shadowColor: Colors.black.withValues(alpha: 0.10),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 260),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          itemCount: visibleProducts.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final product = visibleProducts[index];
+            return ProductTile(
+              product: product,
+              onTap: product.stock <= 0 ? null : () => onProductTap(product),
+            );
+          },
+        ),
       ),
     );
   }

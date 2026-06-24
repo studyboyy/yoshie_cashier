@@ -52,6 +52,9 @@ class ApiClient {
   ApiClient({http.Client? httpClient})
     : _httpClient = httpClient ?? http.Client();
 
+  static const _tokenKey = 'api_token';
+  static const _userProfileKey = 'api_user_profile';
+
   final http.Client _httpClient;
   final OfflineCatalogStore _offlineCatalog = OfflineCatalogStore();
   String? _token;
@@ -61,17 +64,35 @@ class ApiClient {
 
   Future<UserProfile?> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('api_token');
+    _token = prefs.getString(_tokenKey);
 
     if (!isLoggedIn) {
       return null;
     }
 
     try {
-      return await me();
-    } catch (_) {
+      final user = await me();
+      await prefs.setString(_userProfileKey, jsonEncode(user.toJson()));
+
+      return user;
+    } on NetworkException {
+      final cachedUser = _cachedUserProfile(prefs);
+      if (cachedUser != null) {
+        return cachedUser;
+      }
+
+      return null;
+    } on UnauthorizedException {
       _token = null;
-      await prefs.remove('api_token');
+      await prefs.remove(_tokenKey);
+      await prefs.remove(_userProfileKey);
+      return null;
+    } catch (_) {
+      final cachedUser = _cachedUserProfile(prefs);
+      if (cachedUser != null) {
+        return cachedUser;
+      }
+
       return null;
     }
   }
@@ -98,7 +119,8 @@ class ApiClient {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('api_token', _token!);
+    await prefs.setString(_tokenKey, _token!);
+    await prefs.setString(_userProfileKey, jsonEncode(user));
 
     return UserProfile.fromJson(user);
   }
@@ -125,7 +147,8 @@ class ApiClient {
 
     _token = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('api_token');
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userProfileKey);
   }
 
   Future<CashierBootstrap> bootstrap() async {
@@ -431,7 +454,10 @@ class ApiClient {
     // 401 → session expired, bubble up so the app can redirect to login.
     if (response.statusCode == 401) {
       _token = null;
-      SharedPreferences.getInstance().then((p) => p.remove('api_token'));
+      SharedPreferences.getInstance().then((p) async {
+        await p.remove(_tokenKey);
+        await p.remove(_userProfileKey);
+      });
       throw const UnauthorizedException();
     }
 
@@ -459,5 +485,19 @@ class ApiClient {
     }
 
     return body;
+  }
+
+  UserProfile? _cachedUserProfile(SharedPreferences prefs) {
+    final raw = prefs.getString(_userProfileKey);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return UserProfile.fromJson(json);
+    } catch (_) {
+      return null;
+    }
   }
 }

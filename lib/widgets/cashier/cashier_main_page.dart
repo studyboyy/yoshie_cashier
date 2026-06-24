@@ -17,6 +17,7 @@ class CashierMainPage extends StatelessWidget {
     required this.searching,
     required this.searchingCustomer,
     required this.products,
+    required this.favoriteProducts,
     required this.customers,
     required this.selectedCustomer,
     required this.cart,
@@ -50,6 +51,7 @@ class CashierMainPage extends StatelessWidget {
   final bool manualSearchKeyboard;
   final bool searching;
   final List<CashierProduct> products;
+  final List<CashierProduct> favoriteProducts;
   final String? message;
   final bool messageIsError;
   final VoidCallback onSearchTap;
@@ -118,6 +120,7 @@ class CashierMainPage extends StatelessWidget {
           manualSearchKeyboard: manualSearchKeyboard,
           searching: searching,
           products: products,
+          favoriteProducts: favoriteProducts,
           message: message,
           messageIsError: messageIsError,
           onSearchTap: onSearchTap,
