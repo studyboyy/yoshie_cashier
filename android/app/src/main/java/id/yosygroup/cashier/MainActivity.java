@@ -67,10 +67,16 @@ public class MainActivity extends FlutterActivity {
 
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), UPDATE_CHANNEL_NAME)
                 .setMethodCallHandler((call, result) -> {
-                    if ("installApk".equals(call.method)) {
-                        installApk(call, result);
-                    } else {
-                        result.notImplemented();
+                    switch (call.method) {
+                        case "apkCachePath":
+                            apkCachePath(call, result);
+                            break;
+                        case "installApk":
+                            installApk(call, result);
+                            break;
+                        default:
+                            result.notImplemented();
+                            break;
                     }
                 });
     }
@@ -412,6 +418,21 @@ public class MainActivity extends FlutterActivity {
 
     private void mainThread(Runnable action) {
         new Handler(Looper.getMainLooper()).post(action);
+    }
+
+    private void apkCachePath(MethodCall call, MethodChannel.Result result) {
+        String fileName = call.argument("fileName");
+        if (fileName == null || fileName.trim().isEmpty() || !fileName.endsWith(".apk")) {
+            fileName = "yosy-cashier-update.apk";
+        }
+
+        File updatesDir = new File(getCacheDir(), "updates");
+        if (!updatesDir.exists() && !updatesDir.mkdirs()) {
+            result.error("CACHE_FAILED", "Folder cache update tidak bisa dibuat.", null);
+            return;
+        }
+
+        result.success(new File(updatesDir, fileName).getAbsolutePath());
     }
 
     private void installApk(MethodCall call, MethodChannel.Result result) {

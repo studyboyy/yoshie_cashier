@@ -65,9 +65,7 @@ class AppUpdateService {
     }
 
     final contentLength = response.contentLength ?? 0;
-    final file = File(
-      '${Directory.systemTemp.path}/yosy-cashier-${update.latestBuild}.apk',
-    );
+    final file = await _apkDownloadFile(update.latestBuild);
     final sink = file.openWrite();
     var received = 0;
 
@@ -85,6 +83,27 @@ class AppUpdateService {
 
     onProgress?.call(1);
     return file;
+  }
+
+  Future<File> _apkDownloadFile(int buildNumber) async {
+    final fileName = 'yosy-cashier-$buildNumber.apk';
+
+    if (Platform.isAndroid) {
+      try {
+        final path = await _channel.invokeMethod<String>('apkCachePath', {
+          'fileName': fileName,
+        });
+        if (path != null && path.isNotEmpty) {
+          return File(path);
+        }
+      } on PlatformException {
+        // Fall back to system temp for tests or unsupported native builds.
+      } on MissingPluginException {
+        // Fall back when the native channel is not available.
+      }
+    }
+
+    return File('${Directory.systemTemp.path}/$fileName');
   }
 
   Future<void> installApk(File apkFile) async {
