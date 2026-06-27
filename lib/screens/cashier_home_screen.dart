@@ -955,6 +955,11 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         customerId: _selectedCustomer?.id,
         redeemPoints: _redeemPoints.clamp(0, _maxRedeemPoints),
         receiptColumns: printerSettings.receiptColumns,
+        offlineReceiptContext: OfflineReceiptContext(
+          outletName: _bootstrap?.outlet.name ?? '-',
+          cashierName: widget.user.name,
+          customerName: _selectedCustomer?.name,
+        ),
       );
 
       if (!mounted) return;
@@ -975,10 +980,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         unawaited(_autoPrintReceiptIfEnabled(result, printerSettings));
         _showReceiptDialog(result);
       } else {
+        final result = outcome.result!;
+
         _showMessage(
-          'Internet putus. Transaksi disimpan ke antrian offline.',
+          'Transaksi offline ${result.invoiceNumber} tersimpan.',
           isError: false,
         );
+        unawaited(_autoPrintReceiptIfEnabled(result, printerSettings));
+        _showReceiptDialog(result);
         await _refreshOfflineCount();
       }
     } catch (error) {

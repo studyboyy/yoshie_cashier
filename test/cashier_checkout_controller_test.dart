@@ -24,6 +24,7 @@ void main() {
       customerId: null,
       redeemPoints: 0,
       receiptColumns: 32,
+      offlineReceiptContext: _offlineReceiptContext(),
     );
 
     expect(outcome.mode, CashierCheckoutMode.online);
@@ -45,11 +46,15 @@ void main() {
       customerId: 7,
       redeemPoints: 2,
       receiptColumns: 32,
+      offlineReceiptContext: _offlineReceiptContext(customerName: 'Rima'),
     );
 
     final queued = await queue.all();
 
     expect(outcome.mode, CashierCheckoutMode.offline);
+    expect(outcome.result?.receiptText, contains('STRUK OFFLINE'));
+    expect(outcome.result?.receiptText, contains('Rima'));
+    expect(outcome.result?.receiptText, contains('REF-1'));
     expect(queued, hasLength(1));
     expect(outcome.draft?.localReference, queued.single.localReference);
     expect(queued.single.cartItems, hasLength(1));
@@ -107,4 +112,12 @@ CartItem _cartItem() {
 
 PaymentMethod _paymentMethod() {
   return const PaymentMethod(id: 1, name: 'Cash', code: 'cash');
+}
+
+OfflineReceiptContext _offlineReceiptContext({String? customerName}) {
+  return OfflineReceiptContext(
+    outletName: 'Yosy Pusat',
+    cashierName: 'Kasir Test',
+    customerName: customerName,
+  );
 }
