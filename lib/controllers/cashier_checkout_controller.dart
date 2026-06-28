@@ -25,11 +25,13 @@ class OfflineReceiptContext {
   const OfflineReceiptContext({
     required this.outletName,
     required this.cashierName,
+    required this.profile,
     this.customerName,
   });
 
   final String outletName;
   final String cashierName;
+  final ReceiptProfile profile;
   final String? customerName;
 }
 
@@ -130,28 +132,54 @@ class CashierCheckoutController {
     required OfflineReceiptContext context,
   }) {
     final width = receiptColumns == 42 ? 42 : 32;
-    final line = '-' * width;
-    final rows = <String>[
-      centerReceiptText('Yosy Group', width),
-      centerReceiptText('STRUK OFFLINE', width),
+    final profile = context.profile;
+    final line = _receiptLine(width, profile.lineStyle);
+    final rows = <String>[_align(profile.storeName, width, profile.storeAlign)];
+
+    _addBlankRows(rows, profile.spacingHeader);
+
+    if (profile.topText.trim().isNotEmpty) {
+      for (final text in _wrap(profile.topText, width)) {
+        rows.add(_align(text, width, profile.headerAlign));
+      }
+    }
+
+    rows.add(_align('STRUK OFFLINE', width, profile.headerAlign));
+
+    if (profile.headerNote.trim().isNotEmpty) {
+      for (final text in _wrap(profile.headerNote, width)) {
+        rows.add(_align(text, width, profile.headerAlign));
+      }
+    }
+
+    if (profile.storePhone.trim().isNotEmpty) {
+      rows.add(
+        _align('Telp: ${profile.storePhone}', width, profile.headerAlign),
+      );
+    }
+
+    rows.addAll([
       line,
-      _kv('No', invoiceNumber, width),
-      _kv('Tgl', receiptDateTime(draft.createdAt), width),
-      _kv('Kasir', context.cashierName, width),
-      _kv('Cabang', context.outletName, width),
-      if ((context.customerName ?? '').trim().isNotEmpty)
-        _kv('Member', context.customerName!.trim(), width),
+      _infoLine('Tgl', receiptDateTime(draft.createdAt), width),
+      if (profile.showCashier) _infoLine('Kasir', context.cashierName, width),
+      if (profile.showOutlet) _infoLine('Cabang', context.outletName, width),
+      if (profile.showCustomer &&
+          (context.customerName ?? '').trim().isNotEmpty)
+        _infoLine('Member', context.customerName!.trim(), width),
       line,
-    ];
+    ]);
+
+    _addBlankRows(rows, profile.spacingItems);
 
     for (final item in draft.cartItems) {
       final name = item['product_name'] as String? ?? '-';
       final quantity = _asInt(item['quantity']);
       final unitPrice = _asDouble(item['unit_price']);
       final subtotal = _asDouble(item['subtotal']);
-      rows
-        ..addAll(_wrap(name, width))
-        ..add(_itemLine(quantity, unitPrice, subtotal, width));
+      rows.addAll(
+        profile.itemNameWrap ? _wrap(name, width) : [_trim(name, width)],
+      );
+      rows.add(_itemLine(quantity, unitPrice, subtotal, width));
     }
 
     rows
@@ -169,10 +197,21 @@ class CashierCheckoutController {
 
     rows
       ..add(_amountLine('Kembali', changeAmount, width))
-      ..add(line)
-      ..add(centerReceiptText('Transaksi offline tersimpan.', width))
-      ..add(centerReceiptText('Sync saat internet tersedia.', width))
-      ..add(invoiceNumber);
+      ..add(line);
+
+    _addBlankRows(rows, profile.spacingFooter);
+
+    if (profile.bottomText.trim().isNotEmpty) {
+      for (final text in _wrap(profile.bottomText, width)) {
+        rows.add(_align(text, width, profile.footerAlign));
+      }
+    }
+
+    rows
+      ..add(_align('Transaksi offline tersimpan.', width, profile.footerAlign))
+      ..add(_align('Sync saat internet tersedia.', width, profile.footerAlign))
+      ..add(_align(profile.storeFooter, width, profile.footerAlign))
+      ..add(_align(invoiceNumber, width, 'center'));
 
     return rows.join('\n');
   }
@@ -185,6 +224,15 @@ class CashierCheckoutController {
     }
 
     return prefix + _trim(value, available);
+  }
+
+  String _infoLine(String label, String value, int width) {
+    final safeLabel = _trim(label, (width / 3).floor().clamp(6, 12));
+    final valueWidth = (width - safeLabel.length - 1).clamp(8, width).toInt();
+    final safeValue = _trim(value, valueWidth);
+    final spaces = width - safeLabel.length - safeValue.length;
+
+    return '$safeLabel${' ' * spaces.clamp(1, width).toInt()}$safeValue';
   }
 
   String _itemLine(int quantity, double unitPrice, double subtotal, int width) {
@@ -229,6 +277,37 @@ class CashierCheckoutController {
     }
 
     return lines.isEmpty ? ['-'] : lines;
+  }
+
+  String _align(String text, int width, String align) {
+    final trimmed = _trim(text, width);
+    if (align == 'left') {
+      return trimmed;
+    }
+
+    final padding = width - trimmed.length;
+    if (padding <= 0) {
+      return trimmed;
+    }
+
+    if (align == 'right') {
+      return ' ' * padding + trimmed;
+    }
+
+    return ' ' * (padding ~/ 2) + trimmed;
+  }
+
+  String _receiptLine(int width, String style) {
+    return switch (style) {
+      'dot' => '.' * width,
+      _ => '-' * width,
+    };
+  }
+
+  void _addBlankRows(List<String> rows, int count) {
+    for (var index = 0; index < count; index++) {
+      rows.add('');
+    }
   }
 
   String _money(double value) => value.round().toString().replaceAllMapped(

@@ -118,6 +118,7 @@ OfflineReceiptContext _offlineReceiptContext({String? customerName}) {
   return OfflineReceiptContext(
     outletName: 'Yosy Pusat',
     cashierName: 'Kasir Test',
+    profile: ReceiptProfile.fromJson({}),
     customerName: customerName,
   );
 }

@@ -93,12 +93,14 @@ class CashierBootstrap {
     required this.outlet,
     required this.paymentMethods,
     required this.stockAlerts,
+    required this.receiptProfile,
     this.receiptLogoPath,
   });
 
   final OutletInfo outlet;
   final List<PaymentMethod> paymentMethods;
   final List<StockAlert> stockAlerts;
+  final ReceiptProfile receiptProfile;
 
   /// Path logo struk di server storage, misal "receipt-logo.png".
   /// Null berarti gunakan logo default (brand.png).
@@ -114,8 +116,84 @@ class CashierBootstrap {
           .whereType<Map<String, dynamic>>()
           .map(StockAlert.fromJson)
           .toList(),
+      receiptProfile: ReceiptProfile.fromJson(
+        json['receipt_profile'] as Map<String, dynamic>? ?? const {},
+      ),
       receiptLogoPath: json['receipt_logo_path'] as String?,
     );
+  }
+}
+
+class ReceiptProfile {
+  const ReceiptProfile({
+    required this.storeName,
+    required this.storePhone,
+    required this.storeFooter,
+    required this.headerNote,
+    required this.paperWidth,
+    required this.showCashier,
+    required this.showOutlet,
+    required this.showCustomer,
+    required this.storeAlign,
+    required this.headerAlign,
+    required this.footerAlign,
+    required this.topText,
+    required this.bottomText,
+    required this.lineStyle,
+    required this.itemNameWrap,
+    required this.spacingHeader,
+    required this.spacingItems,
+    required this.spacingFooter,
+  });
+
+  final String storeName;
+  final String storePhone;
+  final String storeFooter;
+  final String headerNote;
+  final String paperWidth;
+  final bool showCashier;
+  final bool showOutlet;
+  final bool showCustomer;
+  final String storeAlign;
+  final String headerAlign;
+  final String footerAlign;
+  final String topText;
+  final String bottomText;
+  final String lineStyle;
+  final bool itemNameWrap;
+  final int spacingHeader;
+  final int spacingItems;
+  final int spacingFooter;
+
+  factory ReceiptProfile.fromJson(Map<String, dynamic> json) {
+    return ReceiptProfile(
+      storeName: json['store_name'] as String? ?? 'Yosy Group',
+      storePhone: json['store_phone'] as String? ?? '',
+      storeFooter:
+          json['store_footer'] as String? ?? 'Terima kasih sudah berbelanja!',
+      headerNote: json['receipt_header_note'] as String? ?? '',
+      paperWidth: json['receipt_paper_width'] as String? ?? '58',
+      showCashier: json['receipt_show_cashier'] as bool? ?? true,
+      showOutlet: json['receipt_show_outlet'] as bool? ?? true,
+      showCustomer: json['receipt_show_customer'] as bool? ?? true,
+      storeAlign: _receiptAlign(json['receipt_store_align']),
+      headerAlign: _receiptAlign(json['receipt_header_align']),
+      footerAlign: _receiptAlign(json['receipt_footer_align']),
+      topText: json['receipt_top_text'] as String? ?? '',
+      bottomText: json['receipt_bottom_text'] as String? ?? '',
+      lineStyle: json['receipt_line_style'] as String? ?? 'solid',
+      itemNameWrap: json['receipt_item_name_wrap'] as bool? ?? true,
+      spacingHeader: _asInt(json['receipt_spacing_header']).clamp(0, 3).toInt(),
+      spacingItems: _asInt(json['receipt_spacing_items']).clamp(0, 3).toInt(),
+      spacingFooter: _asInt(json['receipt_spacing_footer']).clamp(0, 3).toInt(),
+    );
+  }
+
+  static String _receiptAlign(dynamic value) {
+    return switch (value) {
+      'left' || 'right' || 'center' => value as String,
+      _ => 'center',
+    };
   }
 }
 

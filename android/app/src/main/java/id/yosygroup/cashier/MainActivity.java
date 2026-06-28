@@ -23,6 +23,7 @@ import androidx.core.content.FileProvider;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -228,10 +229,10 @@ public class MainActivity extends FlutterActivity {
                 adapter.cancelDiscovery();
                 socket.connect();
 
-                ByteArrayOutputStream fullData = new ByteArrayOutputStream();
+                OutputStream output = socket.getOutputStream();
 
                 // ESC @ — initialize printer
-                fullData.write(new byte[]{0x1B, 0x40});
+                writeChunk(output, new byte[]{0x1B, 0x40});
 
                 // Print logo jika ada
                 if (logoBytes != null && logoBytes.length > 0) {
@@ -240,27 +241,29 @@ public class MainActivity extends FlutterActivity {
                             : Math.max(120, Math.min(logoMaxWidthDots, 576));
                     byte[] logoEscPos = buildLogoBytes(logoBytes, logoWidth);
                     if (logoEscPos != null) {
-                        fullData.write(logoEscPos);
+                        writeChunk(output, logoEscPos);
                         // Feed 1 baris setelah logo
-                        fullData.write(new byte[]{0x0A});
+                        writeChunk(output, new byte[]{0x0A});
+                        sleepQuietly(180);
                     }
                 }
 
                 // Teks struk
                 Charset charset = Charset.forName("CP437");
                 // ESC t 0 — select character code table (PC437)
-                fullData.write(new byte[]{0x1B, 0x74, 0x00});
-                fullData.write(buildReceiptTextBytes(receiptText, charset));
+                writeChunk(output, new byte[]{0x1B, 0x74, 0x00});
+                byte[] receiptBytes = buildReceiptTextBytes(receiptText, charset);
+                if (receiptBytes.length == 0) {
+                    receiptBytes = "Struk kosong\n".getBytes(charset);
+                }
+                writeInChunks(output, receiptBytes, 192);
 
                 // Feed lines
                 int feed = (feedLines == null) ? 4 : feedLines;
-                fullData.write("\n".repeat(Math.max(1, Math.min(feed, 8))).getBytes(charset));
+                writeChunk(output, "\n".repeat(Math.max(1, Math.min(feed, 8))).getBytes(charset));
 
                 // GS V B 0 — partial cut
-                fullData.write(new byte[]{0x1D, 0x56, 0x42, 0x00});
-
-                socket.getOutputStream().write(fullData.toByteArray());
-                socket.getOutputStream().flush();
+                writeChunk(output, new byte[]{0x1D, 0x56, 0x42, 0x00});
                 socket.close();
 
                 mainThread(() -> result.success(true));
@@ -321,6 +324,38 @@ public class MainActivity extends FlutterActivity {
         }
 
         return buf.toByteArray();
+    }
+
+    private void writeChunk(OutputStream output, byte[] bytes) throws Exception {
+        if (bytes == null || bytes.length == 0) {
+            return;
+        }
+
+        output.write(bytes);
+        output.flush();
+        sleepQuietly(35);
+    }
+
+    private void writeInChunks(OutputStream output, byte[] bytes, int chunkSize) throws Exception {
+        if (bytes == null || bytes.length == 0) {
+            return;
+        }
+
+        int safeChunkSize = Math.max(64, chunkSize);
+        for (int offset = 0; offset < bytes.length; offset += safeChunkSize) {
+            int length = Math.min(safeChunkSize, bytes.length - offset);
+            output.write(bytes, offset, length);
+            output.flush();
+            sleepQuietly(45);
+        }
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

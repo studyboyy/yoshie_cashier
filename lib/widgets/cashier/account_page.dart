@@ -180,12 +180,16 @@ class CashierAccountPage extends StatelessWidget {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
-                      'Auto print setelah checkout',
+                      'Cetak otomatis setelah bayar',
                       style: TextStyle(fontWeight: FontWeight.w900),
                     ),
-                    subtitle: const Text(
-                      'Langsung cetak jika printer sudah dipilih.',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    subtitle: Text(
+                      printer == null
+                          ? 'Pilih printer dulu untuk mengaktifkan auto-print.'
+                          : autoPrint
+                          ? 'Struk langsung dicetak setelah transaksi berhasil. Tombol cetak manual tetap tersedia.'
+                          : 'Matikan jika ingin cetak struk manual dari dialog transaksi.',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     value: autoPrint,
                     onChanged: printer == null
@@ -198,7 +202,10 @@ class CashierAccountPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: () async {
-                      await onSelectReceiptPrinter();
+                      final selected = await onSelectReceiptPrinter();
+                      if (selected != null) {
+                        await receiptPrinter.setAutoPrint(true);
+                      }
                       onSettingsChanged();
                     },
                     icon: const Icon(Icons.bluetooth_searching),

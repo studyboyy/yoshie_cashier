@@ -958,6 +958,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         offlineReceiptContext: OfflineReceiptContext(
           outletName: _bootstrap?.outlet.name ?? '-',
           cashierName: widget.user.name,
+          profile: _bootstrap?.receiptProfile ?? ReceiptProfile.fromJson({}),
           customerName: _selectedCustomer?.name,
         ),
       );

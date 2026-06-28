@@ -45,6 +45,7 @@ class CashierProductPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final searchQuery = searchController.text.trim();
     final showSearchResults = searchQuery.isNotEmpty && products.isNotEmpty;
+    final showMainProducts = searchQuery.isEmpty || !showSearchResults;
     final mainProducts = searchQuery.isEmpty ? favoriteProducts : products;
     final mainTitle = searchQuery.isEmpty ? 'Produk Favorit' : 'Produk';
     final mainCount = searchQuery.isEmpty
@@ -130,66 +131,69 @@ class CashierProductPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
           ],
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  mainTitle,
+          if (showMainProducts) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    mainTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  mainCount,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                mainCount,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: mainProducts.isEmpty
-                  ? EmptyState(
-                      key: ValueKey(
-                        searchQuery.isEmpty
-                            ? 'empty-favorites'
-                            : 'empty-products',
-                      ),
-                      text: searchQuery.isEmpty
-                          ? 'Belum ada produk favorit. Buka daftar produk cabang lalu pilih ikon bintang.'
-                          : 'Produk tidak ditemukan.',
-                    )
-                  : ListView.separated(
-                      key: ValueKey(
-                        'products-${mainProducts.length}-$searchQuery',
-                      ),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: mainProducts.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final product = mainProducts[index];
-                        return ProductTile(
-                          product: product,
-                          onTap: product.stock <= 0
-                              ? null
-                              : () => onProductTap(product),
-                        );
-                      },
-                    ),
+              ],
             ),
-          ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: mainProducts.isEmpty
+                    ? EmptyState(
+                        key: ValueKey(
+                          searchQuery.isEmpty
+                              ? 'empty-favorites'
+                              : 'empty-products',
+                        ),
+                        text: searchQuery.isEmpty
+                            ? 'Belum ada produk favorit. Buka daftar produk cabang lalu pilih ikon bintang.'
+                            : 'Produk tidak ditemukan.',
+                      )
+                    : ListView.separated(
+                        key: ValueKey(
+                          'products-${mainProducts.length}-$searchQuery',
+                        ),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        itemCount: mainProducts.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final product = mainProducts[index];
+                          return ProductTile(
+                            product: product,
+                            onTap: product.stock <= 0
+                                ? null
+                                : () => onProductTap(product),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ] else
+            const Spacer(),
         ],
       ),
     );

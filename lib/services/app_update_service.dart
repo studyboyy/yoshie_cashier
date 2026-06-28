@@ -57,6 +57,12 @@ class AppUpdateService {
     AppUpdateInfo update, {
     void Function(double progress)? onProgress,
   }) async {
+    final cached = await downloadedApk(update);
+    if (cached != null) {
+      onProgress?.call(1);
+      return cached;
+    }
+
     final request = http.Request('GET', Uri.parse(update.apkUrl));
     final response = await _httpClient.send(request).timeout(_timeout);
 
@@ -66,7 +72,12 @@ class AppUpdateService {
 
     final contentLength = response.contentLength ?? 0;
     final file = await _apkDownloadFile(update.latestBuild);
-    final sink = file.openWrite();
+    final partialFile = File('${file.path}.part');
+    if (await partialFile.exists()) {
+      await partialFile.delete();
+    }
+
+    final sink = partialFile.openWrite();
     var received = 0;
 
     try {
@@ -81,7 +92,54 @@ class AppUpdateService {
       await sink.close();
     }
 
+    if (contentLength > 0 && received != contentLength) {
+      if (await partialFile.exists()) {
+        await partialFile.delete();
+      }
+      throw const ApiException('Download APK belum lengkap. Coba lagi.');
+    }
+
+    if (await file.exists()) {
+      await file.delete();
+    }
+
+    await partialFile.rename(file.path);
+    await _writeDownloadMetadata(update, file, received);
+
     onProgress?.call(1);
+    return file;
+  }
+
+  Future<File?> downloadedApk(AppUpdateInfo update) async {
+    final file = await _apkDownloadFile(update.latestBuild);
+    if (!await file.exists()) {
+      return null;
+    }
+
+    final metadata = await _downloadMetadata(file);
+    if (metadata == null) {
+      return null;
+    }
+
+    final build = metadata['build'] as int?;
+    final apkUrl = metadata['apk_url'] as String?;
+    final expectedSize = metadata['size'] as int?;
+    final actualSize = await file.length();
+
+    if (build != update.latestBuild || apkUrl != update.apkUrl) {
+      return null;
+    }
+
+    if (actualSize <= 0) {
+      return null;
+    }
+
+    if (expectedSize != null &&
+        expectedSize > 0 &&
+        actualSize != expectedSize) {
+      return null;
+    }
+
     return file;
   }
 
@@ -114,5 +172,39 @@ class AppUpdateService {
         error.message ?? 'Tidak bisa membuka installer update.',
       );
     }
+  }
+
+  Future<Map<String, dynamic>?> _downloadMetadata(File apkFile) async {
+    final file = File('${apkFile.path}.json');
+    if (!await file.exists()) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  Future<void> _writeDownloadMetadata(
+    AppUpdateInfo update,
+    File apkFile,
+    int size,
+  ) async {
+    final metadataFile = File('${apkFile.path}.json');
+    await metadataFile.writeAsString(
+      jsonEncode({
+        'build': update.latestBuild,
+        'version': update.latestVersion,
+        'apk_url': update.apkUrl,
+        'size': size,
+        'downloaded_at': DateTime.now().toIso8601String(),
+      }),
+      flush: true,
+    );
   }
 }

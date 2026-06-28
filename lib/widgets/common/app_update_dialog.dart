@@ -22,26 +22,52 @@ class AppUpdateDialog extends StatefulWidget {
 }
 
 class _AppUpdateDialogState extends State<AppUpdateDialog> {
+  File? _downloadedApk;
+  bool _checkingDownloadedApk = true;
   bool _downloading = false;
   double _progress = 0;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadDownloadedApk();
+  }
+
+  Future<void> _loadDownloadedApk() async {
+    final apk = await widget.updateService.downloadedApk(widget.update);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _downloadedApk = apk;
+      _checkingDownloadedApk = false;
+      if (apk != null) {
+        _progress = 1;
+      }
+    });
+  }
+
   Future<void> _downloadAndInstall() async {
     setState(() {
       _downloading = true;
-      _progress = 0;
+      _progress = _downloadedApk == null ? 0 : 1;
       _error = null;
     });
 
     try {
-      final File apk = await widget.updateService.downloadApk(
-        widget.update,
-        onProgress: (progress) {
-          if (mounted) {
-            setState(() => _progress = progress.clamp(0, 1));
-          }
-        },
-      );
+      final File apk =
+          _downloadedApk ??
+          await widget.updateService.downloadApk(
+            widget.update,
+            onProgress: (progress) {
+              if (mounted) {
+                setState(() => _progress = progress.clamp(0, 1));
+              }
+            },
+          );
+      _downloadedApk = apk;
       await widget.updateService.installApk(apk);
       if (mounted && !widget.update.required) {
         Navigator.of(context).pop();
@@ -60,6 +86,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
   @override
   Widget build(BuildContext context) {
     final percent = (_progress * 100).round();
+    final isReadyToInstall = _downloadedApk != null;
 
     return PopScope(
       canPop: !widget.update.required && !_downloading,
@@ -126,12 +153,22 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Mengunduh APK $percent%',
+                isReadyToInstall
+                    ? 'Membuka installer...'
+                    : 'Mengunduh APK $percent%',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Color(0xFF64748B),
                   fontWeight: FontWeight.w800,
                 ),
+              ),
+            ],
+            if (!_downloading && isReadyToInstall) ...[
+              const SizedBox(height: 12),
+              const MessageBanner(
+                message:
+                    'APK sudah terunduh. Tekan Pasang untuk membuka installer.',
+                isError: false,
               ),
             ],
             if (_error != null) ...[
@@ -149,15 +186,27 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
               child: const Text('Nanti'),
             ),
           FilledButton.icon(
-            onPressed: _downloading ? null : _downloadAndInstall,
+            onPressed: _downloading || _checkingDownloadedApk
+                ? null
+                : _downloadAndInstall,
             icon: _downloading
                 ? const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.download),
-            label: Text(_downloading ? 'Mengunduh...' : 'Update'),
+                : Icon(
+                    isReadyToInstall ? Icons.install_mobile : Icons.download,
+                  ),
+            label: Text(
+              _downloading
+                  ? isReadyToInstall
+                        ? 'Membuka installer...'
+                        : 'Mengunduh...'
+                  : isReadyToInstall
+                  ? 'Pasang'
+                  : 'Update',
+            ),
           ),
         ],
       ),

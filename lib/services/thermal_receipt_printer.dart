@@ -51,12 +51,12 @@ class ThermalPrinterSettings {
 
 class ThermalReceiptPrinter {
   static const _channel = MethodChannel('yosy_group/thermal_printer');
-  static const _printerNameKey    = 'yosy_group.receipt_printer.name';
+  static const _printerNameKey = 'yosy_group.receipt_printer.name';
   static const _printerAddressKey = 'yosy_group.receipt_printer.address';
-  static const _printerTypeKey    = 'yosy_group.receipt_printer.type';
-  static const _autoPrintKey      = 'yosy_group.receipt_printer.auto_print';
+  static const _printerTypeKey = 'yosy_group.receipt_printer.type';
+  static const _autoPrintKey = 'yosy_group.receipt_printer.auto_print';
   static const _receiptColumnsKey = 'yosy_group.receipt_printer.columns';
-  static const _logoPathKey       = 'yosy_group.receipt_printer.logo_path';
+  static const _logoPathKey = 'yosy_group.receipt_printer.logo_path';
 
   // ─── Logo management ─────────────────────────────────────────────────────
 
@@ -82,9 +82,9 @@ class ThermalReceiptPrinter {
     }
 
     try {
-      final response = await http.get(_logoUri(path)).timeout(
-        const Duration(seconds: 5),
-      );
+      final response = await http
+          .get(_logoUri(path))
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         return response.bodyBytes;
       }
@@ -200,12 +200,15 @@ class ThermalReceiptPrinter {
   }) async {
     final logoBytes = await fetchLogoBytes();
     final columns = await receiptColumns();
+    final safeReceiptText = receiptText.trim().isEmpty
+        ? 'Yosy Group\nStruk tidak tersedia\n'
+        : receiptText;
 
     try {
       await saveSelectedPrinter(printer);
       await _channel.invokeMethod<bool>('printReceipt', {
         'address': printer.address,
-        'receiptText': receiptText,
+        'receiptText': safeReceiptText,
         'feedLines': 4,
         'logoMaxWidthDots': columns >= 42 ? 360 : 240,
         ...?(logoBytes == null ? null : {'logoBytes': logoBytes}),
