@@ -252,6 +252,8 @@ public class MainActivity extends FlutterActivity {
                 Charset charset = Charset.forName("CP437");
                 // ESC t 0 — select character code table (PC437)
                 writeChunk(output, new byte[]{0x1B, 0x74, 0x00});
+                // ESC M 0 — select printer Font A, the most compatible receipt font.
+                writeChunk(output, new byte[]{0x1B, 0x4D, 0x00});
                 byte[] receiptBytes = buildReceiptTextBytes(receiptText, charset);
                 if (receiptBytes.length == 0) {
                     receiptBytes = "Struk kosong\n".getBytes(charset);

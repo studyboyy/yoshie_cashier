@@ -343,7 +343,12 @@ class ReceiptPaperPreview extends StatelessWidget {
         overflow: TextOverflow.visible,
         style: TextStyle(
           color: const Color(0xFF111827),
-          fontFamily: 'monospace',
+          fontFamily: 'Consolas',
+          fontFamilyFallback: const [
+            'Roboto Mono',
+            'Courier New',
+            'monospace',
+          ],
           fontSize: fontSize,
           height: 1.28,
           fontWeight: bold ? FontWeight.w900 : FontWeight.w500,
