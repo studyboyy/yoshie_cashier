@@ -98,6 +98,15 @@ class CashierCheckoutController {
       0,
       (total, item) => total + _asDouble(item['subtotal']),
     );
+    final grossTotal = draft.cartItems.fold<double>(
+      0,
+      (total, item) =>
+          total + (_asDouble(item['unit_price']) * _asInt(item['quantity'])),
+    );
+    final negotiationDiscount = draft.cartItems.fold<double>(
+      0,
+      (total, item) => total + _asDouble(item['discount_amount']),
+    );
     final paidAmount = _asDouble(draft.payment['amount']);
     final changeAmount = (paidAmount - grandTotal).clamp(0, double.infinity);
     final invoiceNumber = draft.localReference.toUpperCase();
@@ -106,6 +115,8 @@ class CashierCheckoutController {
       paymentMethod: paymentMethod,
       invoiceNumber: invoiceNumber,
       grandTotal: grandTotal,
+      grossTotal: grossTotal,
+      negotiationDiscount: negotiationDiscount,
       paidAmount: paidAmount,
       changeAmount: changeAmount.toDouble(),
       receiptColumns: receiptColumns,
@@ -126,6 +137,8 @@ class CashierCheckoutController {
     required PaymentMethod paymentMethod,
     required String invoiceNumber,
     required double grandTotal,
+    required double grossTotal,
+    required double negotiationDiscount,
     required double paidAmount,
     required double changeAmount,
     required int receiptColumns,
@@ -176,15 +189,25 @@ class CashierCheckoutController {
       final quantity = _asInt(item['quantity']);
       final unitPrice = _asDouble(item['unit_price']);
       final subtotal = _asDouble(item['subtotal']);
+      final discount = _asDouble(item['discount_amount']);
       rows.addAll(
         profile.itemNameWrap ? _wrap(name, width) : [_trim(name, width)],
       );
       rows.add(_itemLine(quantity, unitPrice, subtotal, width));
+      if (discount > 0) {
+        rows.add(_signedAmountLine('Nego', -discount, width));
+      }
     }
 
     rows
       ..add(line)
-      ..add(_amountLine('Subtotal', grandTotal, width))
+      ..add(_amountLine('Subtotal', grossTotal, width));
+
+    if (negotiationDiscount > 0) {
+      rows.add(_signedAmountLine('Potongan Nego', -negotiationDiscount, width));
+    }
+
+    rows
       ..add(line)
       ..add(_amountLine('TOTAL', grandTotal, width))
       ..add(_amountLine(paymentMethod.name, paidAmount, width));
@@ -245,6 +268,13 @@ class CashierCheckoutController {
 
   String _amountLine(String label, double value, int width) {
     final amount = _money(value);
+    final spaces = width - label.length - amount.length;
+
+    return spaces > 0 ? '$label${' ' * spaces}$amount' : '$label $amount';
+  }
+
+  String _signedAmountLine(String label, double value, int width) {
+    final amount = value < 0 ? '-${_money(value.abs())}' : _money(value);
     final spaces = width - label.length - amount.length;
 
     return spaces > 0 ? '$label${' ' * spaces}$amount' : '$label $amount';

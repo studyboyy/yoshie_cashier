@@ -14,6 +14,10 @@ class CashierCartController extends ChangeNotifier {
   int get length => _items.length;
 
   double get total => _items.fold(0, (sum, item) => sum + item.subtotal);
+  double get grossTotal =>
+      _items.fold(0, (sum, item) => sum + item.grossSubtotal);
+  double get negotiationDiscount =>
+      _items.fold(0, (sum, item) => sum + item.discountAmount);
   int get count => _items.fold(0, (sum, item) => sum + item.quantity);
 
   AddCartResult addProduct(CashierProduct product) {
@@ -69,6 +73,32 @@ class CashierCartController extends ChangeNotifier {
     _items[index].quantity = quantity;
     notifyListeners();
     return true;
+  }
+
+  bool updateNegotiatedUnitPrice(CartItem item, double negotiatedUnitPrice) {
+    final index = _indexOf(item);
+    if (index < 0 || negotiatedUnitPrice < 0) {
+      return false;
+    }
+
+    final normalPrice = _items[index].product.price;
+    if (negotiatedUnitPrice > normalPrice) {
+      return false;
+    }
+
+    _items[index].negotiatedUnitPrice = negotiatedUnitPrice;
+    notifyListeners();
+    return true;
+  }
+
+  void clearNegotiation(CartItem item) {
+    final index = _indexOf(item);
+    if (index < 0) {
+      return;
+    }
+
+    _items[index].negotiatedUnitPrice = _items[index].product.price;
+    notifyListeners();
   }
 
   void clear() {

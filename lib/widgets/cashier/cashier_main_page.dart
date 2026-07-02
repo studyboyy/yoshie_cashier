@@ -42,6 +42,7 @@ class CashierMainPage extends StatelessWidget {
     required this.onRemoveItem,
     required this.onDecrementItem,
     required this.onIncrementItem,
+    required this.onNegotiateItem,
   });
 
   // Search
@@ -82,6 +83,7 @@ class CashierMainPage extends StatelessWidget {
   final ValueChanged<CartItem> onRemoveItem;
   final ValueChanged<CartItem> onDecrementItem;
   final ValueChanged<CartItem> onIncrementItem;
+  final ValueChanged<CartItem> onNegotiateItem;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +153,7 @@ class CashierMainPage extends StatelessWidget {
                       onRemoveItem: onRemoveItem,
                       onDecrementItem: onDecrementItem,
                       onIncrementItem: onIncrementItem,
+                      onNegotiateItem: onNegotiateItem,
                     ),
                   ),
                 ],
@@ -172,6 +175,7 @@ class CashierMainPage extends StatelessWidget {
                     onRemoveItem: onRemoveItem,
                     onDecrementItem: onDecrementItem,
                     onIncrementItem: onIncrementItem,
+                    onNegotiateItem: onNegotiateItem,
                     compact: true,
                     compactCartMaxHeight: compactCartHeight,
                   ),

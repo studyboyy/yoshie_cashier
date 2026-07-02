@@ -473,6 +473,7 @@ class CartPanel extends StatelessWidget {
     required this.onRemoveItem,
     required this.onDecrementItem,
     required this.onIncrementItem,
+    required this.onNegotiateItem,
     this.compact = false,
     this.compactCartMaxHeight = 210,
   });
@@ -489,6 +490,7 @@ class CartPanel extends StatelessWidget {
   final ValueChanged<CartItem> onRemoveItem;
   final ValueChanged<CartItem> onDecrementItem;
   final ValueChanged<CartItem> onIncrementItem;
+  final ValueChanged<CartItem> onNegotiateItem;
   final bool compact;
   final double compactCartMaxHeight;
 
@@ -530,6 +532,7 @@ class CartPanel extends StatelessWidget {
                 onRemoveItem: onRemoveItem,
                 onDecrementItem: onDecrementItem,
                 onIncrementItem: onIncrementItem,
+                onNegotiateItem: onNegotiateItem,
               ),
             )
           else
@@ -540,10 +543,21 @@ class CartPanel extends StatelessWidget {
                 onRemoveItem: onRemoveItem,
                 onDecrementItem: onDecrementItem,
                 onIncrementItem: onIncrementItem,
+                onNegotiateItem: onNegotiateItem,
               ),
             ),
           const SizedBox(height: 12),
           SummaryLine(label: 'Subtotal', value: rupiah(total)),
+          if (cart.fold<double>(0, (sum, item) => sum + item.discountAmount) >
+              0) ...[
+            const SizedBox(height: 6),
+            SummaryLine(
+              label: 'Potongan nego',
+              value:
+                  '-${rupiah(cart.fold<double>(0, (sum, item) => sum + item.discountAmount))}',
+              highlight: true,
+            ),
+          ],
           if (pointDiscount > 0) ...[
             const SizedBox(height: 6),
             SummaryLine(
@@ -579,6 +593,7 @@ class _CartList extends StatelessWidget {
     required this.onRemoveItem,
     required this.onDecrementItem,
     required this.onIncrementItem,
+    required this.onNegotiateItem,
   });
 
   final List<CartItem> cart;
@@ -586,6 +601,7 @@ class _CartList extends StatelessWidget {
   final ValueChanged<CartItem> onRemoveItem;
   final ValueChanged<CartItem> onDecrementItem;
   final ValueChanged<CartItem> onIncrementItem;
+  final ValueChanged<CartItem> onNegotiateItem;
 
   @override
   Widget build(BuildContext context) {
@@ -603,6 +619,7 @@ class _CartList extends StatelessWidget {
           onIncrement: item.quantity >= item.product.stock
               ? null
               : () => onIncrementItem(item),
+          onNegotiate: () => onNegotiateItem(item),
         );
       },
     );

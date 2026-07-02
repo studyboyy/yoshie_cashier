@@ -114,6 +114,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   bool get _searching => _lookupController.searchingProducts;
   bool get _searchingCustomer => _lookupController.searchingCustomers;
   double get _total => _cartController.total;
+  double get _negotiationDiscount => _cartController.negotiationDiscount;
   int get _redeemPoints =>
       _paymentCalculator.redeemPointsFromText(_redeemController.text);
   int get _maxRedeemPoints => _paymentCalculator.maxRedeemPoints(
@@ -764,6 +765,45 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     _clearMessage();
   }
 
+  Future<void> _negotiateCartItem(CartItem item) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+
+    final result = await showModalBottomSheet<_NegotiationResult>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _NegotiationSheet(item: item),
+    );
+
+    if (result == null || !mounted) {
+      _refocusSearch();
+      return;
+    }
+
+    if (result.clear) {
+      _cartController.clearNegotiation(item);
+      _showMessage('Harga nego ${item.product.name} dihapus.', isError: false);
+    } else if (result.price < 0 || result.price > item.product.price) {
+      _showMessage(
+        'Harga nego harus antara Rp 0 sampai ${rupiah(item.product.price)}.',
+        isError: true,
+      );
+    } else {
+      _cartController.updateNegotiatedUnitPrice(item, result.price);
+      _showMessage('Harga nego ${item.product.name} disimpan.', isError: false);
+    }
+
+    _syncPaidToPayable();
+    _refocusSearch();
+  }
+
   Future<void> _editCartItemQuantity(CartItem item) async {
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -900,6 +940,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         maxRedeemPoints: _maxRedeemPoints,
         quickPaidAmounts: _quickPaidAmounts,
         subtotal: _total,
+        negotiationDiscount: _negotiationDiscount,
         pointDiscount: _pointDiscount,
         payableTotal: _payableTotal,
         checkoutLoading: _checkoutLoading,
@@ -1395,6 +1436,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       onRemoveItem: _removeCartItem,
       onDecrementItem: _decrementCart,
       onIncrementItem: _incrementCart,
+      onNegotiateItem: _negotiateCartItem,
     );
   }
 
@@ -2090,6 +2132,279 @@ class _ColorfulRailButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NegotiationResult {
+  const _NegotiationResult.price(this.price) : clear = false;
+  const _NegotiationResult.clear() : price = 0, clear = true;
+
+  final double price;
+  final bool clear;
+}
+
+class _NegotiationSheet extends StatefulWidget {
+  const _NegotiationSheet({required this.item});
+
+  final CartItem item;
+
+  @override
+  State<_NegotiationSheet> createState() => _NegotiationSheetState();
+}
+
+class _NegotiationSheetState extends State<_NegotiationSheet> {
+  late final TextEditingController _priceController = TextEditingController(
+    text: widget.item.negotiatedUnitPrice.round().toString(),
+  );
+
+  double get _price =>
+      double.tryParse(_priceController.text.replaceAll('.', '').trim()) ?? 0;
+
+  double get _unitDiscount =>
+      (widget.item.product.price - _price).clamp(0, double.infinity).toDouble();
+
+  double get _totalDiscount => _unitDiscount * widget.item.quantity;
+
+  double get _itemTotal => _price * widget.item.quantity;
+
+  bool get _isValid => _price >= 0 && _price <= widget.item.product.price;
+
+  @override
+  void dispose() {
+    _priceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        18 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Atur Harga Nego',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Potongan hanya berlaku untuk item ini di keranjang.',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.item.product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${widget.item.product.sku} - ${widget.item.quantity} ${widget.item.product.unit}',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _NegotiationMetric(
+                  label: 'Harga Normal',
+                  value: rupiah(widget.item.product.price),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _NegotiationMetric(
+                  label: 'Potongan / pcs',
+                  value: rupiah(_unitDiscount),
+                  accent: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _priceController,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Harga jadi per pcs',
+              prefixText: 'Rp ',
+              errorText: _isValid
+                  ? null
+                  : 'Tidak boleh lebih besar dari harga normal.',
+            ),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                _NegotiationSummaryRow(
+                  label: 'Total potongan',
+                  value: '-${rupiah(_totalDiscount)}',
+                ),
+                const SizedBox(height: 6),
+                _NegotiationSummaryRow(
+                  label: 'Total item',
+                  value: rupiah(_itemTotal),
+                  strong: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop(const _NegotiationResult.clear()),
+                  child: const Text('Hapus Nego'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _isValid
+                      ? () => Navigator.of(
+                          context,
+                        ).pop(_NegotiationResult.price(_price))
+                      : null,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Simpan'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NegotiationMetric extends StatelessWidget {
+  const _NegotiationMetric({
+    required this.label,
+    required this.value,
+    this.accent = false,
+  });
+
+  final String label;
+  final String value;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent ? const Color(0xFFDCFCE7) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accent ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: accent ? const Color(0xFF047857) : const Color(0xFF64748B),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: accent ? const Color(0xFF047857) : const Color(0xFF0F172A),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NegotiationSummaryRow extends StatelessWidget {
+  const _NegotiationSummaryRow({
+    required this.label,
+    required this.value,
+    this.strong = false,
+  });
+
+  final String label;
+  final String value;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: const Color(0xFF64748B),
+              fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: strong ? const Color(0xFF4338CA) : const Color(0xFF047857),
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
     );
   }
 }

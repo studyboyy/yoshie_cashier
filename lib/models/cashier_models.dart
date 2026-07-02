@@ -278,15 +278,35 @@ class CashierProduct {
 }
 
 class CartItem {
-  CartItem({required this.product, this.quantity = 1});
+  CartItem({
+    required this.product,
+    this.quantity = 1,
+    double? negotiatedUnitPrice,
+  }) : negotiatedUnitPrice = negotiatedUnitPrice ?? product.price;
 
   final CashierProduct product;
   int quantity;
+  double negotiatedUnitPrice;
 
-  double get subtotal => product.price * quantity;
+  double get unitDiscount {
+    final discount = product.price - negotiatedUnitPrice;
+    return discount > 0 ? discount : 0;
+  }
+
+  double get discountAmount => unitDiscount * quantity;
+
+  bool get hasNegotiation => discountAmount > 0;
+
+  double get subtotal => negotiatedUnitPrice * quantity;
+
+  double get grossSubtotal => product.price * quantity;
 
   Map<String, dynamic> toCheckoutJson() {
-    return {'product_id': product.id, 'quantity': quantity};
+    return {
+      'product_id': product.id,
+      'quantity': quantity,
+      if (hasNegotiation) 'negotiated_unit_price': negotiatedUnitPrice,
+    };
   }
 
   Map<String, dynamic> toOfflineJson() {
@@ -296,20 +316,32 @@ class CartItem {
       'product_sku': product.sku,
       'quantity': quantity,
       'unit_price': product.price,
+      'negotiated_unit_price': negotiatedUnitPrice,
+      'discount_amount': discountAmount,
       'subtotal': subtotal,
     };
   }
 
   Map<String, dynamic> toDraftJson() {
-    return {'product': product.toJson(), 'quantity': quantity};
+    return {
+      'product': product.toJson(),
+      'quantity': quantity,
+      'negotiated_unit_price': negotiatedUnitPrice,
+    };
   }
 
   factory CartItem.fromDraftJson(Map<String, dynamic> json) {
+    final product = CashierProduct.fromJson(
+      json['product'] as Map<String, dynamic>? ?? {},
+    );
+    final negotiatedUnitPrice = _asDouble(
+      json['negotiated_unit_price'] ?? product.price,
+    ).clamp(0, product.price).toDouble();
+
     return CartItem(
-      product: CashierProduct.fromJson(
-        json['product'] as Map<String, dynamic>? ?? {},
-      ),
+      product: product,
       quantity: _asInt(json['quantity']).clamp(1, 999999).toInt(),
+      negotiatedUnitPrice: negotiatedUnitPrice,
     );
   }
 }

@@ -19,6 +19,7 @@ class PaymentSheet extends StatefulWidget {
     required this.maxRedeemPoints,
     required this.quickPaidAmounts,
     required this.subtotal,
+    required this.negotiationDiscount,
     required this.pointDiscount,
     required this.payableTotal,
     required this.checkoutLoading,
@@ -38,6 +39,7 @@ class PaymentSheet extends StatefulWidget {
   final int maxRedeemPoints;
   final List<double> quickPaidAmounts;
   final double subtotal;
+  final double negotiationDiscount;
   final double pointDiscount;
   final double payableTotal;
   // changeAmount dihitung langsung di State agar reactive terhadap input
@@ -192,6 +194,14 @@ class _PaymentSheetState extends State<PaymentSheet> {
           ),
           const SizedBox(height: 14),
           SummaryLine(label: 'Subtotal', value: rupiah(widget.subtotal)),
+          if (widget.negotiationDiscount > 0) ...[
+            const SizedBox(height: 6),
+            SummaryLine(
+              label: 'Potongan nego',
+              value: '-${rupiah(widget.negotiationDiscount)}',
+              highlight: true,
+            ),
+          ],
           if (widget.pointDiscount > 0) ...[
             const SizedBox(height: 6),
             SummaryLine(
