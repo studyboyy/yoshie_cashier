@@ -375,6 +375,28 @@ class RecentSaleTile extends StatelessWidget {
                       sale.invoiceNumber,
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
+                    if (sale.localOnly) ...[
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: const Color(0xFFFED7AA)),
+                        ),
+                        child: const Text(
+                          'Offline lokal',
+                          style: TextStyle(
+                            color: Color(0xFFC2410C),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       '${sale.customer ?? 'Non member'} - ${sale.paymentMethod ?? '-'} - $paidAt',

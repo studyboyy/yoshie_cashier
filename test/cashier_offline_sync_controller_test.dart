@@ -1,6 +1,7 @@
 import 'package:flutter_cashier/controllers/cashier_offline_sync_controller.dart';
 import 'package:flutter_cashier/models/cashier_models.dart';
 import 'package:flutter_cashier/services/api_client.dart';
+import 'package:flutter_cashier/services/offline_return_queue.dart';
 import 'package:flutter_cashier/services/offline_sale_queue.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,7 @@ void main() {
     final controller = CashierOfflineSyncController(
       api: api,
       offlineQueue: queue,
+      offlineReturnQueue: const OfflineReturnQueue(),
     );
 
     final result = await controller.syncPending();
@@ -55,6 +57,7 @@ void main() {
     final controller = CashierOfflineSyncController(
       api: api,
       offlineQueue: queue,
+      offlineReturnQueue: const OfflineReturnQueue(),
     );
 
     final result = await controller.syncPending();
@@ -70,6 +73,7 @@ void main() {
     final controller = CashierOfflineSyncController(
       api: _SyncApiClient(),
       offlineQueue: queue,
+      offlineReturnQueue: const OfflineReturnQueue(),
     );
 
     expect(await controller.pendingCount(), 0);
@@ -99,9 +103,9 @@ class _SyncApiClient extends ApiClient {
   final syncedReferences = <String>[];
 
   @override
-  Future<String> syncOfflineSale(OfflineSaleDraft draft) async {
+  Future<SyncedOfflineSale> syncOfflineSale(OfflineSaleDraft draft) async {
     syncedReferences.add(draft.localReference);
-    return 'INV-SYNC';
+    return const SyncedOfflineSale(saleId: 1, invoiceNumber: 'INV-SYNC');
   }
 }
 

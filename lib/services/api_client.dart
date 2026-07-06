@@ -357,13 +357,27 @@ class ApiClient {
     return CheckoutResult.fromJson(response);
   }
 
-  Future<String> syncOfflineSale(OfflineSaleDraft draft) async {
+  Future<SyncedOfflineSale> syncOfflineSale(OfflineSaleDraft draft) async {
     final response = await _post(
       '/cashier/offline-sales/sync',
       body: draft.toSyncJson(),
     );
 
-    return response['invoice_number'] as String? ?? '-';
+    final saleId = response['sale_id'];
+
+    return SyncedOfflineSale(
+      saleId: saleId is num
+          ? saleId.toInt()
+          : int.tryParse(saleId?.toString() ?? '') ?? 0,
+      invoiceNumber: response['invoice_number'] as String? ?? '-',
+    );
+  }
+
+  Future<RecentSale> returnPreview(int saleId) async {
+    final response = await _get('/cashier/sales/$saleId/return');
+    final sale = response['sale'] as Map<String, dynamic>? ?? const {};
+
+    return RecentSale.fromJson(sale);
   }
 
   // ─── Cash In / Out ────────────────────────────────────────────────────────
@@ -518,4 +532,11 @@ class ApiClient {
       return null;
     }
   }
+}
+
+class SyncedOfflineSale {
+  const SyncedOfflineSale({required this.saleId, required this.invoiceNumber});
+
+  final int saleId;
+  final String invoiceNumber;
 }

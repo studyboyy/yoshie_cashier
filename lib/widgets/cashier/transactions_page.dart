@@ -11,10 +11,34 @@ class CashierTransactionsPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.onOpenReceipt,
+    required this.onPrintDailySummary,
+    required this.onPrintDailyReceipts,
+    this.offlineSales = const <RecentSale>[],
+    this.onOfflineReturn,
+    this.trainingMode = false,
+    this.trainingSales = const <RecentSale>[],
+    this.onTrainingReturn,
   });
 
   final ApiClient api;
   final ValueChanged<RecentSale> onOpenReceipt;
+  final Future<void> Function(List<RecentSale> sales) onPrintDailySummary;
+  final Future<void> Function(List<RecentSale> sales) onPrintDailyReceipts;
+  final List<RecentSale> offlineSales;
+  final Future<SaleReturnResult> Function(
+    RecentSale sale,
+    List<SaleReturnItemRequest> items,
+    String reason,
+  )?
+  onOfflineReturn;
+  final bool trainingMode;
+  final List<RecentSale> trainingSales;
+  final Future<SaleReturnResult> Function(
+    RecentSale sale,
+    List<SaleReturnItemRequest> items,
+    String reason,
+  )?
+  onTrainingReturn;
 
   @override
   State<CashierTransactionsPage> createState() =>
@@ -27,12 +51,54 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
   @override
   void initState() {
     super.initState();
-    _future = widget.api.recentSales();
+    _future = _loadSales();
+  }
+
+  @override
+  void didUpdateWidget(CashierTransactionsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.trainingMode != oldWidget.trainingMode ||
+        widget.trainingSales != oldWidget.trainingSales ||
+        widget.offlineSales != oldWidget.offlineSales) {
+      _reload();
+    }
+  }
+
+  Future<List<RecentSale>> _loadSales() {
+    if (widget.trainingMode) {
+      return Future.value(widget.trainingSales);
+    }
+
+    return widget.api
+        .recentSales()
+        .then((sales) {
+          if (widget.offlineSales.isEmpty) {
+            return sales;
+          }
+
+          final onlineInvoices = sales
+              .map((sale) => sale.invoiceNumber)
+              .toSet();
+
+          return [
+            ...widget.offlineSales.where(
+              (sale) => !onlineInvoices.contains(sale.invoiceNumber),
+            ),
+            ...sales,
+          ];
+        })
+        .catchError((error) {
+          if (error is NetworkException && widget.offlineSales.isNotEmpty) {
+            return widget.offlineSales;
+          }
+
+          throw error;
+        });
   }
 
   void _reload() {
     setState(() {
-      _future = widget.api.recentSales();
+      _future = _loadSales();
     });
   }
 
@@ -72,8 +138,22 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => _ReturnSheet(
-        api: widget.api,
         sale: sale,
+        onSave: (items, reason) {
+          if (widget.trainingMode) {
+            return widget.onTrainingReturn!(sale, items, reason);
+          }
+
+          if (sale.localOnly) {
+            return widget.onOfflineReturn!(sale, items, reason);
+          }
+
+          return widget.api.createSaleReturn(
+            saleId: sale.id,
+            items: items,
+            reason: reason,
+          );
+        },
         onSaved: (result) {
           _reload();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -193,9 +273,11 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Transaksi Hari Ini',
-                        style: TextStyle(
+                      Text(
+                        widget.trainingMode
+                            ? 'Histori Training'
+                            : 'Transaksi Hari Ini',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -219,9 +301,51 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
               ],
             ),
             const SizedBox(height: 8),
+            if (sales.isNotEmpty) ...[
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 420;
+                  final buttonWidth = isNarrow
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 10) / 2;
+
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      SizedBox(
+                        width: buttonWidth,
+                        child: FilledButton.icon(
+                          onPressed: () => widget.onPrintDailySummary(sales),
+                          icon: const Icon(Icons.summarize_outlined),
+                          label: Text(
+                            widget.trainingMode
+                                ? 'Print Rekap Training'
+                                : 'Print Rekap Harian',
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: buttonWidth,
+                        child: OutlinedButton.icon(
+                          onPressed: () => widget.onPrintDailyReceipts(sales),
+                          icon: const Icon(Icons.receipt_long_outlined),
+                          label: const Text('Print Semua Struk'),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
             if (sales.isEmpty)
-              const AppSurface(
-                child: EmptyState(text: 'Belum ada transaksi hari ini.'),
+              AppSurface(
+                child: EmptyState(
+                  text: widget.trainingMode
+                      ? 'Belum ada transaksi training.'
+                      : 'Belum ada transaksi hari ini.',
+                ),
               )
             else
               ...sales.map(
@@ -442,13 +566,17 @@ class _SaleItemRow extends StatelessWidget {
 
 class _ReturnSheet extends StatefulWidget {
   const _ReturnSheet({
-    required this.api,
     required this.sale,
+    required this.onSave,
     required this.onSaved,
   });
 
-  final ApiClient api;
   final RecentSale sale;
+  final Future<SaleReturnResult> Function(
+    List<SaleReturnItemRequest> items,
+    String reason,
+  )
+  onSave;
   final ValueChanged<SaleReturnResult> onSaved;
 
   @override
@@ -474,6 +602,7 @@ class _ReturnSheetState extends State<_ReturnSheet> {
       .map(
         (item) => SaleReturnItemRequest(
           saleItemId: item.id,
+          productId: item.productId,
           qty: _qtyByItem[item.id] ?? 0,
           condition: _conditionByItem[item.id] ?? 'sellable',
         ),
@@ -497,11 +626,7 @@ class _ReturnSheetState extends State<_ReturnSheet> {
 
     setState(() => _saving = true);
     try {
-      final result = await widget.api.createSaleReturn(
-        saleId: widget.sale.id,
-        items: items,
-        reason: _reasonController.text,
-      );
+      final result = await widget.onSave(items, _reasonController.text);
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onSaved(result);
@@ -577,6 +702,23 @@ class _ReturnSheetState extends State<_ReturnSheet> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: const Text(
+                'Pilih item yang ingin diretur saja. Qty default 0, jadi produk lain tidak ikut diretur.',
+                style: TextStyle(
+                  color: Color(0xFF92400E),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             Expanded(

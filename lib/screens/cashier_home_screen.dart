@@ -16,6 +16,8 @@ import '../services/app_update_service.dart';
 import '../services/cart_draft_store.dart';
 import '../services/favorite_product_store.dart';
 import '../services/offline_catalog_store.dart';
+import '../services/offline_return_queue.dart';
+import '../services/offline_sale_history_store.dart';
 import '../services/offline_sale_queue.dart';
 import '../services/pin_lock_service.dart';
 import '../services/thermal_receipt_printer.dart';
@@ -71,6 +73,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   final _referenceController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _offlineQueue = OfflineSaleQueue();
+  final _offlineReturnQueue = const OfflineReturnQueue();
+  final _offlineSaleHistoryStore = const OfflineSaleHistoryStore();
   final _offlineCatalogStore = OfflineCatalogStore();
   final _pinLockService = PinLockService();
   final _favoriteProductStore = const FavoriteProductStore();
@@ -90,6 +94,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   CashierShiftInfo? _activeShift;
   PaymentMethod? _selectedPaymentMethod;
   List<CashierProduct> _favoriteProducts = <CashierProduct>[];
+  List<RecentSale> _trainingSales = <RecentSale>[];
+  List<RecentSale> _offlineSales = <RecentSale>[];
 
   bool _loading = true;
   bool _checkoutLoading = false;
@@ -105,6 +111,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   bool _trainingMode = false;
   int _selectedTab = 1;
   int _offlinePendingCount = 0;
+  int _trainingSaleSequence = 0;
+  int _trainingSaleItemSequence = 0;
   String? _message;
   bool _messageIsError = false;
 
@@ -134,12 +142,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     _offlineSyncController = CashierOfflineSyncController(
       api: widget.api,
       offlineQueue: _offlineQueue,
+      offlineReturnQueue: _offlineReturnQueue,
     );
     _searchController.addListener(_onSearchChanged);
     _cartController.addListener(_onCartChanged);
     _lookupController.addListener(_onLookupChanged);
     _restoreCartDraft();
     _refreshOfflineCount();
+    _loadOfflineSales();
     _loadPinLockStatus(lockIfEnabled: true);
     _loadTrainingMode();
     _startConnectivityAutoSync();
@@ -392,6 +402,15 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     setState(() => _offlinePendingCount = count);
   }
 
+  Future<void> _loadOfflineSales() async {
+    final sales = await _offlineSaleHistoryStore.all();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _offlineSales = sales);
+  }
+
   Future<void> _loadPinLockStatus({bool lockIfEnabled = false}) async {
     final enabled = await _pinLockService.isEnabled();
     if (!mounted) {
@@ -489,6 +508,9 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       final result = await _offlineSyncController.syncPending();
 
       if (!mounted) return;
+
+      await _offlineSaleHistoryStore.removeMany(result.syncedReferences);
+      await _loadOfflineSales();
 
       if (!silent && result.syncedCount > 0) {
         _showMessage(
@@ -987,6 +1009,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
           receiptColumns: printerSettings.receiptColumns,
           context: receiptContext,
         );
+        _recordTrainingSale(result, paymentMethod);
 
         if (!mounted) return;
 
@@ -1036,6 +1059,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         _showReceiptDialog(result);
       } else {
         final result = outcome.result!;
+        await _recordOfflineSale(result, paymentMethod);
 
         _showMessage(
           'Transaksi offline ${result.invoiceNumber} tersimpan.',
@@ -1053,6 +1077,100 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         setState(() => _checkoutLoading = false);
       }
     }
+  }
+
+  void _recordTrainingSale(CheckoutResult result, PaymentMethod paymentMethod) {
+    _trainingSaleSequence += 1;
+    final saleId = _trainingSaleSequence;
+    final items = _cart.map((item) {
+      _trainingSaleItemSequence += 1;
+
+      return RecentSaleItem(
+        id: _trainingSaleItemSequence,
+        productId: item.product.id,
+        productName: item.product.name,
+        productSku: item.product.sku,
+        quantity: item.quantity,
+        returnedQuantity: 0,
+        returnableQuantity: item.quantity,
+        unitPrice: item.product.price,
+        discountAmount: item.discountAmount,
+        subtotal: item.subtotal,
+      );
+    }).toList();
+
+    final sale = RecentSale(
+      id: saleId,
+      invoiceNumber: result.invoiceNumber,
+      paidAt: DateTime.now(),
+      grandTotal: result.grandTotal,
+      paidAmount: result.paidAmount,
+      changeAmount: result.changeAmount,
+      paymentMethod: paymentMethod.name,
+      items: items,
+      receiptText: result.receiptText,
+    );
+
+    setState(() {
+      _trainingSales = [sale, ..._trainingSales].take(50).toList();
+    });
+  }
+
+  Future<void> _recordOfflineSale(
+    CheckoutResult result,
+    PaymentMethod paymentMethod,
+  ) async {
+    final sale = _localSaleFromCart(
+      result: result,
+      paymentMethod: paymentMethod,
+      localOnly: true,
+    );
+
+    await _offlineSaleHistoryStore.append(sale);
+    final sales = await _offlineSaleHistoryStore.all();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _offlineSales = sales);
+  }
+
+  RecentSale _localSaleFromCart({
+    required CheckoutResult result,
+    required PaymentMethod paymentMethod,
+    required bool localOnly,
+  }) {
+    final baseId = DateTime.now().microsecondsSinceEpoch;
+    final items = _cart.asMap().entries.map((entry) {
+      final index = entry.key;
+      final item = entry.value;
+
+      return RecentSaleItem(
+        id: baseId + index,
+        productId: item.product.id,
+        productName: item.product.name,
+        productSku: item.product.sku,
+        quantity: item.quantity,
+        returnedQuantity: 0,
+        returnableQuantity: item.quantity,
+        unitPrice: item.product.price,
+        discountAmount: item.discountAmount,
+        subtotal: item.subtotal,
+      );
+    }).toList();
+
+    return RecentSale(
+      id: baseId,
+      invoiceNumber: result.invoiceNumber,
+      paidAt: DateTime.now(),
+      grandTotal: result.grandTotal,
+      paidAmount: result.paidAmount,
+      changeAmount: result.changeAmount,
+      paymentMethod: paymentMethod.name,
+      items: items,
+      receiptText: result.receiptText,
+      localOnly: localOnly,
+    );
   }
 
   CheckoutResult _trainingCheckoutResult({
@@ -1460,6 +1578,20 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   }
 
   Future<void> _openReceiptFromHistory(RecentSale sale) async {
+    if ((_trainingMode || sale.localOnly) && sale.receiptText != null) {
+      _showReceiptDialog(
+        CheckoutResult(
+          invoiceNumber: sale.invoiceNumber,
+          receiptText: sale.receiptText!,
+          grandTotal: sale.grandTotal,
+          paidAmount: sale.paidAmount,
+          changeAmount: sale.changeAmount,
+        ),
+        training: _trainingMode,
+      );
+      return;
+    }
+
     _showMessage('Membuka struk ${sale.invoiceNumber}...', isError: false);
 
     try {
@@ -1473,6 +1605,409 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       if (!mounted) return;
       _handleError(error);
     }
+  }
+
+  Future<void> _printDailySalesSummary(List<RecentSale> sales) async {
+    if (sales.isEmpty) {
+      _showMessage('Belum ada transaksi untuk dicetak.', isError: true);
+      return;
+    }
+
+    final columns = await _receiptPrinter.receiptColumns();
+    final receiptText = _dailySalesSummaryReceipt(
+      sales: sales,
+      receiptColumns: columns,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showDailySummaryPreview(sales: sales, receiptText: receiptText);
+  }
+
+  void _showDailySummaryPreview({
+    required List<RecentSale> sales,
+    required String receiptText,
+  }) {
+    final total = sales.fold<double>(0, (sum, sale) => sum + sale.grandTotal);
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width < 480
+                ? MediaQuery.sizeOf(context).width - 24
+                : 430,
+            maxHeight: MediaQuery.sizeOf(context).height < 760
+                ? MediaQuery.sizeOf(context).height - 24
+                : 720,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.summarize_outlined,
+                        color: Color(0xFF4F46E5),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _trainingMode
+                                ? 'Preview Rekap Training'
+                                : 'Preview Rekap Harian',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${sales.length} transaksi - ${rupiah(total)}',
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Tutup',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: ReceiptPaperPreview(
+                    receiptText: receiptText,
+                    compact: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 340;
+                    final buttonWidth = isNarrow
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 10) / 2;
+
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        SizedBox(
+                          width: buttonWidth,
+                          child: FilledButton.icon(
+                            onPressed: () => _printReceipt(receiptText),
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('Cetak Rekap'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: buttonWidth,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _copyReceipt(receiptText),
+                            icon: const Icon(Icons.copy_outlined),
+                            label: const Text('Salin'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: isNarrow ? constraints.maxWidth : buttonWidth,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close),
+                            label: const Text('Tutup'),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _printDailySaleReceipts(List<RecentSale> sales) async {
+    if (sales.isEmpty) {
+      _showMessage('Belum ada struk transaksi untuk dicetak.', isError: true);
+      return;
+    }
+
+    _showMessage('Menyiapkan ${sales.length} struk...', isError: false);
+
+    try {
+      final columns = await _receiptPrinter.receiptColumns();
+      final receipts = <String>[];
+
+      for (final sale in sales) {
+        if (_trainingMode && sale.receiptText != null) {
+          receipts.add(sale.receiptText!);
+          continue;
+        }
+
+        final result = await widget.api.receipt(
+          sale.id,
+          receiptColumns: columns,
+        );
+        receipts.add(result.receiptText);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _clearMessage();
+      await _printReceipt(receipts.join('\n\n\n'));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _handleError(error);
+    }
+  }
+
+  String _dailySalesSummaryReceipt({
+    required List<RecentSale> sales,
+    required int receiptColumns,
+  }) {
+    final width = receiptColumns >= 42 ? 42 : 32;
+    final line = '-' * width;
+    final now = DateTime.now();
+    final total = sales.fold<double>(0, (sum, sale) => sum + sale.grandTotal);
+    final itemCount = sales.fold<int>(
+      0,
+      (sum, sale) =>
+          sum + sale.items.fold<int>(0, (qty, item) => qty + item.quantity),
+    );
+    final rows = <String>[
+      centerReceiptText(
+        _bootstrap?.receiptProfile.storeName ?? 'Yosy Group',
+        width,
+      ),
+      centerReceiptText(
+        _trainingMode ? 'REKAP TRAINING HARI INI' : 'REKAP TRANSAKSI HARI INI',
+        width,
+      ),
+      line,
+      _receiptInfoLine('Tgl', receiptDateTime(now), width),
+      _receiptInfoLine('Kasir', widget.user.name, width),
+      _receiptInfoLine('Cabang', _bootstrap?.outlet.name ?? '-', width),
+      line,
+      _receiptAmountLine(
+        'Transaksi',
+        sales.length.toDouble(),
+        width,
+        suffix: ' trx',
+      ),
+      _receiptAmountLine('Item', itemCount.toDouble(), width, suffix: ' pcs'),
+      _receiptMoneyLine('Total', total, width),
+      line,
+    ];
+
+    for (final sale in sales) {
+      rows.add(
+        _receiptPairLine(sale.invoiceNumber, rupiah(sale.grandTotal), width),
+      );
+      final paidAt = sale.paidAt;
+      if (paidAt != null) {
+        rows.add(
+          _receiptPairLine(
+            receiptDateTime(paidAt),
+            sale.paymentMethod ?? '-',
+            width,
+          ),
+        );
+      }
+    }
+
+    rows
+      ..add(line)
+      ..add(
+        centerReceiptText(
+          _trainingMode
+              ? 'Mode training - bukan laporan asli'
+              : 'Dicetak dari aplikasi kasir',
+          width,
+        ),
+      );
+
+    return rows.join('\n');
+  }
+
+  String _receiptInfoLine(String label, String value, int width) {
+    final labelWidth = width >= 42 ? 10 : 7;
+    final safeLabel = _trimReceiptText(label, labelWidth).padRight(labelWidth);
+    final valueWidth = (width - labelWidth).clamp(8, width).toInt();
+    final safeValue = _trimReceiptText(value, valueWidth);
+
+    return safeLabel + safeValue.padLeft(valueWidth);
+  }
+
+  String _receiptMoneyLine(String label, double value, int width) {
+    return _receiptPairLine(label, rupiah(value), width);
+  }
+
+  String _receiptAmountLine(
+    String label,
+    double value,
+    int width, {
+    String suffix = '',
+  }) {
+    final amount = '${value.round()}$suffix';
+    return _receiptPairLine(label, amount, width);
+  }
+
+  String _receiptPairLine(String left, String right, int width) {
+    final safeRight = _trimReceiptText(right, width ~/ 2);
+    final safeLeft = _trimReceiptText(left, width - safeRight.length - 1);
+    final spaces = width - safeLeft.length - safeRight.length;
+
+    return spaces > 0
+        ? '$safeLeft${' ' * spaces}$safeRight'
+        : '$safeLeft $safeRight';
+  }
+
+  String _trimReceiptText(String value, int maxLength) {
+    if (maxLength <= 0) {
+      return '';
+    }
+
+    return value.length <= maxLength ? value : value.substring(0, maxLength);
+  }
+
+  Future<SaleReturnResult> _returnTrainingSale(
+    RecentSale sale,
+    List<SaleReturnItemRequest> items,
+    String reason,
+  ) async {
+    final qtyByItemId = {for (final item in items) item.saleItemId: item.qty};
+    var refundAmount = 0.0;
+
+    final updatedItems = sale.items.map((item) {
+      final qty = qtyByItemId[item.id] ?? 0;
+      if (qty <= 0) {
+        return item;
+      }
+
+      final safeQty = qty > item.returnableQuantity
+          ? item.returnableQuantity
+          : qty;
+      refundAmount += safeQty * item.finalUnitPrice;
+
+      return item.copyWith(
+        returnedQuantity: item.returnedQuantity + safeQty,
+        returnableQuantity: item.returnableQuantity - safeQty,
+      );
+    }).toList();
+
+    final updatedSale = sale.copyWith(items: updatedItems);
+    setState(() {
+      _trainingSales = _trainingSales
+          .map(
+            (trainingSale) =>
+                trainingSale.id == sale.id ? updatedSale : trainingSale,
+          )
+          .toList();
+    });
+
+    return SaleReturnResult(
+      returnNumber: 'TRAIN-RET-${DateTime.now().millisecondsSinceEpoch}',
+      refundAmount: refundAmount,
+      message: reason.trim().isEmpty ? 'Retur training tersimpan.' : reason,
+      sale: updatedSale,
+    );
+  }
+
+  Future<SaleReturnResult> _returnOfflineSale(
+    RecentSale sale,
+    List<SaleReturnItemRequest> items,
+    String reason,
+  ) async {
+    final result = _applyLocalReturn(
+      sale: sale,
+      items: items,
+      reason: reason,
+      returnPrefix: 'OFF-RET',
+    );
+
+    final updatedSale = result.sale;
+    if (updatedSale != null) {
+      await _offlineReturnQueue.enqueue(
+        OfflineReturnDraft(
+          localReference: sale.invoiceNumber,
+          reason: reason.trim().isEmpty ? 'Retur offline dari kasir' : reason,
+          items: items,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await _offlineSaleHistoryStore.update(updatedSale);
+      await _loadOfflineSales();
+    }
+
+    return result;
+  }
+
+  SaleReturnResult _applyLocalReturn({
+    required RecentSale sale,
+    required List<SaleReturnItemRequest> items,
+    required String reason,
+    required String returnPrefix,
+  }) {
+    final qtyByItemId = {for (final item in items) item.saleItemId: item.qty};
+    var refundAmount = 0.0;
+
+    final updatedItems = sale.items.map((item) {
+      final qty = qtyByItemId[item.id] ?? 0;
+      if (qty <= 0) {
+        return item;
+      }
+
+      final safeQty = qty > item.returnableQuantity
+          ? item.returnableQuantity
+          : qty;
+      refundAmount += safeQty * item.finalUnitPrice;
+
+      return item.copyWith(
+        returnedQuantity: item.returnedQuantity + safeQty,
+        returnableQuantity: item.returnableQuantity - safeQty,
+      );
+    }).toList();
+
+    final updatedSale = sale.copyWith(items: updatedItems);
+
+    return SaleReturnResult(
+      returnNumber: '$returnPrefix-${DateTime.now().millisecondsSinceEpoch}',
+      refundAmount: refundAmount,
+      message: reason.trim().isEmpty ? 'Retur lokal tersimpan.' : reason,
+      sale: updatedSale,
+    );
   }
 
   @override
@@ -1649,6 +2184,13 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     return CashierTransactionsPage(
       api: widget.api,
       onOpenReceipt: _openReceiptFromHistory,
+      onPrintDailySummary: _printDailySalesSummary,
+      onPrintDailyReceipts: _printDailySaleReceipts,
+      offlineSales: _offlineSales,
+      onOfflineReturn: _returnOfflineSale,
+      trainingMode: _trainingMode,
+      trainingSales: _trainingSales,
+      onTrainingReturn: _returnTrainingSale,
     );
   }
 

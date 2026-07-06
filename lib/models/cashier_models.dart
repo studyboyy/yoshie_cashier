@@ -437,6 +437,8 @@ class RecentSale {
     this.customer,
     this.paymentMethod,
     this.items = const <RecentSaleItem>[],
+    this.receiptText,
+    this.localOnly = false,
   });
 
   final int id;
@@ -448,6 +450,36 @@ class RecentSale {
   final double changeAmount;
   final String? paymentMethod;
   final List<RecentSaleItem> items;
+  final String? receiptText;
+  final bool localOnly;
+
+  RecentSale copyWith({
+    int? id,
+    String? invoiceNumber,
+    DateTime? paidAt,
+    String? customer,
+    double? grandTotal,
+    double? paidAmount,
+    double? changeAmount,
+    String? paymentMethod,
+    List<RecentSaleItem>? items,
+    String? receiptText,
+    bool? localOnly,
+  }) {
+    return RecentSale(
+      id: id ?? this.id,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      paidAt: paidAt ?? this.paidAt,
+      customer: customer ?? this.customer,
+      grandTotal: grandTotal ?? this.grandTotal,
+      paidAmount: paidAmount ?? this.paidAmount,
+      changeAmount: changeAmount ?? this.changeAmount,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      items: items ?? this.items,
+      receiptText: receiptText ?? this.receiptText,
+      localOnly: localOnly ?? this.localOnly,
+    );
+  }
 
   factory RecentSale.fromJson(Map<String, dynamic> json) {
     return RecentSale(
@@ -463,7 +495,25 @@ class RecentSale {
           .whereType<Map<String, dynamic>>()
           .map(RecentSaleItem.fromJson)
           .toList(),
+      receiptText: json['receipt_text'] as String?,
+      localOnly: json['local_only'] as bool? ?? false,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'invoice_number': invoiceNumber,
+      'paid_at': paidAt?.toIso8601String(),
+      'customer': customer,
+      'grand_total': grandTotal,
+      'paid_amount': paidAmount,
+      'change_amount': changeAmount,
+      'payment_method': paymentMethod,
+      'items': items.map((item) => item.toJson()).toList(),
+      'receipt_text': receiptText,
+      'local_only': localOnly,
+    };
   }
 }
 
@@ -496,6 +546,32 @@ class RecentSaleItem {
 
   double get finalUnitPrice => quantity <= 0 ? unitPrice : subtotal / quantity;
 
+  RecentSaleItem copyWith({
+    int? id,
+    int? productId,
+    String? productName,
+    String? productSku,
+    int? quantity,
+    int? returnedQuantity,
+    int? returnableQuantity,
+    double? unitPrice,
+    double? discountAmount,
+    double? subtotal,
+  }) {
+    return RecentSaleItem(
+      id: id ?? this.id,
+      productId: productId ?? this.productId,
+      productName: productName ?? this.productName,
+      productSku: productSku ?? this.productSku,
+      quantity: quantity ?? this.quantity,
+      returnedQuantity: returnedQuantity ?? this.returnedQuantity,
+      returnableQuantity: returnableQuantity ?? this.returnableQuantity,
+      unitPrice: unitPrice ?? this.unitPrice,
+      discountAmount: discountAmount ?? this.discountAmount,
+      subtotal: subtotal ?? this.subtotal,
+    );
+  }
+
   factory RecentSaleItem.fromJson(Map<String, dynamic> json) {
     return RecentSaleItem(
       id: _asInt(json['id']),
@@ -510,6 +586,21 @@ class RecentSaleItem {
       subtotal: _asDouble(json['subtotal']),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'product_id': productId,
+      'product_name': productName,
+      'product_sku': productSku,
+      'quantity': quantity,
+      'returned_quantity': returnedQuantity,
+      'returnable_quantity': returnableQuantity,
+      'unit_price': unitPrice,
+      'discount_amount': discountAmount,
+      'subtotal': subtotal,
+    };
+  }
 }
 
 class SaleReturnItemRequest {
@@ -517,14 +608,17 @@ class SaleReturnItemRequest {
     required this.saleItemId,
     required this.qty,
     required this.condition,
+    this.productId = 0,
   });
 
   final int saleItemId;
+  final int productId;
   final int qty;
   final String condition;
 
   Map<String, dynamic> toJson() => {
     'sale_item_id': saleItemId,
+    if (productId > 0) 'product_id': productId,
     'qty': qty,
     'condition': condition,
   };
