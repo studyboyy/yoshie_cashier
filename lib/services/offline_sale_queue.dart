@@ -79,7 +79,8 @@ class OfflineSaleDraft {
 class OfflineSaleQueue {
   static const _storageKey = 'yosy_group.offline_sales.queue';
   static const _backupStorageKey = 'yosy_group.offline_sales.backup';
-  static const _backupUpdatedAtKey = 'yosy_group.offline_sales.backup_updated_at';
+  static const _backupUpdatedAtKey =
+      'yosy_group.offline_sales.backup_updated_at';
 
   Future<List<OfflineSaleDraft>> all() async {
     final prefs = await SharedPreferences.getInstance();
@@ -203,6 +204,9 @@ class OfflineSaleQueue {
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(items.map((item) => item.toJson()).toList());
     await prefs.setString(_backupStorageKey, encoded);
-    await prefs.setString(_backupUpdatedAtKey, DateTime.now().toIso8601String());
+    await prefs.setString(
+      _backupUpdatedAtKey,
+      DateTime.now().toIso8601String(),
+    );
   }
 }

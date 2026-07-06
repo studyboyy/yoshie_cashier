@@ -67,10 +67,7 @@ class _PinLockSheetState extends State<PinLockSheet> {
                   color: const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
-                  Icons.lock_outline,
-                  color: Color(0xFF4F46E5),
-                ),
+                child: const Icon(Icons.lock_outline, color: Color(0xFF4F46E5)),
               ),
               const SizedBox(width: 12),
               Expanded(

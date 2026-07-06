@@ -820,6 +820,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   }
 
   Future<void> _negotiateCartItem(CartItem item) async {
+    if (!item.product.canNegotiate) {
+      _showMessage(
+        'Nego harga hanya tersedia untuk produk Fashion.',
+        isError: true,
+      );
+      return;
+    }
+
     FocusManager.instance.primaryFocus?.unfocus();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
@@ -1181,7 +1189,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toList();
-    final addressAlreadyPrinted = addressLines.isNotEmpty &&
+    final addressAlreadyPrinted =
+        addressLines.isNotEmpty &&
         addressLines.any((line) => receiptText.contains(line));
     final trainingHeader = [
       line,

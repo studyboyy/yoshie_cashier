@@ -51,6 +51,20 @@ class CartItemTile extends StatelessWidget {
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 3),
+                          if (item.product.isFashion &&
+                              item.product.variantText.isNotEmpty) ...[
+                            Text(
+                              item.product.variantText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF4F46E5),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                          ],
                           Wrap(
                             spacing: 6,
                             runSpacing: 4,
@@ -146,11 +160,13 @@ class CartItemTile extends StatelessWidget {
                       icon: const Icon(Icons.delete_outline),
                     ),
                     const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      onPressed: onNegotiate,
-                      icon: const Icon(Icons.sell_outlined, size: 18),
-                      label: const Text('Nego'),
-                    ),
+                    if (item.product.canNegotiate) ...[
+                      OutlinedButton.icon(
+                        onPressed: onNegotiate,
+                        icon: const Icon(Icons.sell_outlined, size: 18),
+                        label: const Text('Nego'),
+                      ),
+                    ],
                     const Spacer(),
                     IconButton.outlined(
                       tooltip: 'Kurangi',

@@ -58,9 +58,40 @@ void main() {
     expect(controller.items.single.product.id, 1);
     expect(controller.count, 2);
   });
+
+  test('negotiation is only allowed for fashion products', () {
+    final controller = CashierCartController();
+    final general = _product(id: 1, stock: 5);
+    final fashion = _product(
+      id: 2,
+      stock: 5,
+      productType: 'fashion',
+      canNegotiate: true,
+    );
+
+    controller.addProduct(general);
+    controller.addProduct(fashion);
+
+    expect(
+      controller.updateNegotiatedUnitPrice(controller.items[0], 8000),
+      isFalse,
+    );
+    expect(controller.items[0].negotiatedUnitPrice, 10000);
+
+    expect(
+      controller.updateNegotiatedUnitPrice(controller.items[1], 8000),
+      isTrue,
+    );
+    expect(controller.items[1].negotiatedUnitPrice, 8000);
+  });
 }
 
-CashierProduct _product({required int id, required int stock}) {
+CashierProduct _product({
+  required int id,
+  required int stock,
+  String productType = 'general',
+  bool canNegotiate = false,
+}) {
   return CashierProduct(
     id: id,
     name: 'Produk $id',
@@ -69,5 +100,7 @@ CashierProduct _product({required int id, required int stock}) {
     price: 10000,
     priceText: 'Rp 10.000',
     stock: stock,
+    productType: productType,
+    canNegotiate: canNegotiate,
   );
 }

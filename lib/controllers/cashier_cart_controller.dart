@@ -81,6 +81,10 @@ class CashierCartController extends ChangeNotifier {
       return false;
     }
 
+    if (!_items[index].product.canNegotiate) {
+      return false;
+    }
+
     final normalPrice = _items[index].product.price;
     if (negotiatedUnitPrice > normalPrice) {
       return false;

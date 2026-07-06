@@ -185,9 +185,7 @@ class CashierCheckoutController {
         ? context.outletPhone!.trim()
         : profile.storePhone.trim();
     if (receiptPhone.isNotEmpty) {
-      rows.add(
-        _align('Telp: $receiptPhone', width, profile.headerAlign),
-      );
+      rows.add(_align('Telp: $receiptPhone', width, profile.headerAlign));
     }
 
     rows.addAll([
@@ -293,7 +291,9 @@ class CashierCheckoutController {
     final safeLabel = _trim(label, width - 9);
     final spaces = width - safeLabel.length - amount.length;
 
-    return spaces > 0 ? '$safeLabel${' ' * spaces}$amount' : '$safeLabel $amount';
+    return spaces > 0
+        ? '$safeLabel${' ' * spaces}$amount'
+        : '$safeLabel $amount';
   }
 
   String _signedAmountLine(String label, double value, int width) {
@@ -301,7 +301,9 @@ class CashierCheckoutController {
     final safeLabel = _trim(label, width - 10);
     final spaces = width - safeLabel.length - amount.length;
 
-    return spaces > 0 ? '$safeLabel${' ' * spaces}$amount' : '$safeLabel $amount';
+    return spaces > 0
+        ? '$safeLabel${' ' * spaces}$amount'
+        : '$safeLabel $amount';
   }
 
   List<String> _wrap(String text, int width) {

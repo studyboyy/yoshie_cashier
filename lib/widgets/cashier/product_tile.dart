@@ -53,6 +53,32 @@ class ProductTile extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 3),
+                    if (product.isFashion &&
+                        product.variantText.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 4,
+                        children: [
+                          _InfoBadge(
+                            label: 'Fashion',
+                            background: const Color(0xFFEDE9FE),
+                            foreground: const Color(0xFF5B21B6),
+                          ),
+                          _InfoBadge(
+                            label: product.variantText,
+                            background: const Color(0xFFEFF6FF),
+                            foreground: const Color(0xFF1D4ED8),
+                          ),
+                          if (product.canNegotiate)
+                            _InfoBadge(
+                              label: 'Nego',
+                              background: const Color(0xFFDCFCE7),
+                              foreground: const Color(0xFF047857),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Text(
                       '${product.sku} - Stok ${product.stock} ${product.unit}',
                       maxLines: 1,
@@ -101,6 +127,39 @@ class ProductTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoBadge extends StatelessWidget {
+  const _InfoBadge({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );

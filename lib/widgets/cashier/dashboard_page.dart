@@ -162,9 +162,7 @@ class CashierDashboardPage extends StatelessWidget {
             }
 
             if (snapshot.hasError) {
-              return _BranchStockPanel.error(
-                onRetry: onOpenAvailableProducts,
-              );
+              return _BranchStockPanel.error(onRetry: onOpenAvailableProducts);
             }
 
             return _BranchStockPanel(
@@ -180,22 +178,22 @@ class CashierDashboardPage extends StatelessWidget {
 
 class _BranchStockPanel extends StatelessWidget {
   const _BranchStockPanel({required this.products, this.onOpenDetails})
-      : loading = false,
-        error = false,
-        onRetry = null;
+    : loading = false,
+      error = false,
+      onRetry = null;
 
   const _BranchStockPanel.loading()
-      : products = const [],
-        loading = true,
-        error = false,
-        onRetry = null,
-        onOpenDetails = null;
+    : products = const [],
+      loading = true,
+      error = false,
+      onRetry = null,
+      onOpenDetails = null;
 
   const _BranchStockPanel.error({required this.onRetry})
-      : products = const [],
-        loading = false,
-        error = true,
-        onOpenDetails = null;
+    : products = const [],
+      loading = false,
+      error = true,
+      onOpenDetails = null;
 
   final List<CashierProduct> products;
   final bool loading;

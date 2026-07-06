@@ -49,11 +49,7 @@ class ReceiptDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              _ReceiptActions(
-                result: result,
-                onPrint: onPrint,
-                onCopy: onCopy,
-              ),
+              _ReceiptActions(result: result, onPrint: onPrint, onCopy: onCopy),
             ],
           ),
         ),
@@ -76,9 +72,7 @@ class _ReceiptHeader extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: training
-                ? const Color(0xFFFFFBEB)
-                : const Color(0xFFECFDF5),
+            color: training ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(
@@ -340,7 +334,8 @@ class ReceiptPaperPreview extends StatelessWidget {
       final trimmed = line.trim();
       final separator = RegExp(r'^-{6,}$').hasMatch(trimmed);
       final brand = !brandPrinted && trimmed.isNotEmpty && separatorCount == 0;
-      final itemName = separatorCount == 2 &&
+      final itemName =
+          separatorCount == 2 &&
           !separator &&
           trimmed.isNotEmpty &&
           !trimmed.startsWith('TOTAL') &&
@@ -355,11 +350,7 @@ class ReceiptPaperPreview extends StatelessWidget {
         style: TextStyle(
           color: const Color(0xFF111827),
           fontFamily: 'Consolas',
-          fontFamilyFallback: const [
-            'Roboto Mono',
-            'Courier New',
-            'monospace',
-          ],
+          fontFamilyFallback: const ['Roboto Mono', 'Courier New', 'monospace'],
           fontSize: fontSize,
           height: 1.28,
           fontWeight: bold ? FontWeight.w900 : FontWeight.w500,

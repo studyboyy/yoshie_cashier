@@ -243,16 +243,42 @@ class CashierProduct {
     required this.priceText,
     required this.stock,
     this.barcode,
+    this.productType = 'general',
+    this.color,
+    this.size,
+    this.variantName,
+    this.canNegotiate = false,
   });
 
   final int id;
   final String name;
   final String sku;
   final String? barcode;
+  final String productType;
+  final String? color;
+  final String? size;
+  final String? variantName;
+  final bool canNegotiate;
   final String unit;
   final double price;
   final String priceText;
   final int stock;
+
+  bool get isFashion => productType == 'fashion';
+
+  String get variantText {
+    final explicit = (variantName ?? '').trim();
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+
+    final parts = [
+      if ((color ?? '').trim().isNotEmpty) color!.trim(),
+      if ((size ?? '').trim().isNotEmpty) size!.trim(),
+    ];
+
+    return parts.join(' / ');
+  }
 
   factory CashierProduct.fromJson(Map<String, dynamic> json) {
     final id = json['product_id'] ?? json['id'];
@@ -266,6 +292,11 @@ class CashierProduct {
       name: name as String? ?? '-',
       sku: sku as String? ?? '',
       barcode: json['barcode'] as String?,
+      productType: json['product_type'] as String? ?? 'general',
+      color: json['color'] as String?,
+      size: json['size'] as String?,
+      variantName: json['variant_name'] as String?,
+      canNegotiate: json['can_negotiate'] as bool? ?? false,
       unit: json['unit'] as String? ?? 'pcs',
       price: _asDouble(price),
       priceText: priceText as String? ?? '',
@@ -279,6 +310,11 @@ class CashierProduct {
       'name': name,
       'sku': sku,
       'barcode': barcode,
+      'product_type': productType,
+      'color': color,
+      'size': size,
+      'variant_name': variantName,
+      'can_negotiate': canNegotiate,
       'unit': unit,
       'price': price,
       'price_fmt': priceText,
@@ -315,20 +351,26 @@ class CartItem {
     return {
       'product_id': product.id,
       'quantity': quantity,
-      if (hasNegotiation) 'negotiated_unit_price': negotiatedUnitPrice,
+      if (product.canNegotiate && hasNegotiation)
+        'negotiated_unit_price': negotiatedUnitPrice,
     };
   }
 
   Map<String, dynamic> toOfflineJson() {
+    final discount = product.canNegotiate ? discountAmount : 0.0;
+    final finalUnitPrice = product.canNegotiate
+        ? negotiatedUnitPrice
+        : product.price;
+
     return {
       'product_id': product.id,
       'product_name': product.name,
       'product_sku': product.sku,
       'quantity': quantity,
       'unit_price': product.price,
-      'negotiated_unit_price': negotiatedUnitPrice,
-      'discount_amount': discountAmount,
-      'subtotal': subtotal,
+      'negotiated_unit_price': finalUnitPrice,
+      'discount_amount': discount,
+      'subtotal': finalUnitPrice * quantity,
     };
   }
 
