@@ -78,6 +78,8 @@ class OfflineSaleDraft {
 
 class OfflineSaleQueue {
   static const _storageKey = 'yosy_group.offline_sales.queue';
+  static const _backupStorageKey = 'yosy_group.offline_sales.backup';
+  static const _backupUpdatedAtKey = 'yosy_group.offline_sales.backup_updated_at';
 
   Future<List<OfflineSaleDraft>> all() async {
     final prefs = await SharedPreferences.getInstance();
@@ -120,6 +122,7 @@ class OfflineSaleQueue {
     }
 
     await _save(items);
+    await _backup(draft);
   }
 
   Future<void> remove(String localReference) async {
@@ -134,9 +137,72 @@ class OfflineSaleQueue {
     await _save([]);
   }
 
+  Future<List<OfflineSaleDraft>> backupAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_backupStorageKey);
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
+
+    final decoded = jsonDecode(raw) as List<dynamic>;
+
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .map(OfflineSaleDraft.fromJson)
+        .where(
+          (draft) =>
+              draft.localReference.isNotEmpty && draft.cartItems.isNotEmpty,
+        )
+        .toList();
+  }
+
+  Future<int> backupCount() async {
+    final items = await backupAll();
+
+    return items.length;
+  }
+
+  Future<DateTime?> backupUpdatedAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_backupUpdatedAtKey);
+
+    return raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+  }
+
+  Future<String> backupJson() async {
+    final items = await backupAll();
+
+    return const JsonEncoder.withIndent('  ').convert({
+      'exported_at': DateTime.now().toIso8601String(),
+      'app': 'Yosy Group Android Cashier',
+      'total': items.length,
+      'offline_sales': items.map((draft) => draft.toJson()).toList(),
+    });
+  }
+
   Future<void> _save(List<OfflineSaleDraft> items) async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(items.map((draft) => draft.toJson()).toList());
     await prefs.setString(_storageKey, encoded);
+  }
+
+  Future<void> _backup(OfflineSaleDraft draft) async {
+    var items = await backupAll();
+
+    if (items.any((d) => d.localReference == draft.localReference)) {
+      return;
+    }
+
+    items.add(draft);
+
+    final maxBackupSize = AppConfig.offlineQueueMaxSize * 3;
+    if (items.length > maxBackupSize) {
+      items = items.sublist(items.length - maxBackupSize);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(items.map((item) => item.toJson()).toList());
+    await prefs.setString(_backupStorageKey, encoded);
+    await prefs.setString(_backupUpdatedAtKey, DateTime.now().toIso8601String());
   }
 }

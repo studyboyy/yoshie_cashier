@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/offline_catalog_store.dart';
 import '../../services/offline_sale_queue.dart';
@@ -38,9 +39,16 @@ class _OfflineCenterPageState extends State<OfflineCenterPage> {
 
   Future<_OfflineCenterData> _load() async {
     final drafts = await widget.offlineQueue.all();
+    final backupCount = await widget.offlineQueue.backupCount();
+    final backupUpdatedAt = await widget.offlineQueue.backupUpdatedAt();
     final catalog = await widget.catalogStore.snapshot();
 
-    return _OfflineCenterData(drafts: drafts, catalog: catalog);
+    return _OfflineCenterData(
+      drafts: drafts,
+      catalog: catalog,
+      backupCount: backupCount,
+      backupUpdatedAt: backupUpdatedAt,
+    );
   }
 
   Future<void> _reload() async {
@@ -113,9 +121,15 @@ class _OfflineCenterPageState extends State<OfflineCenterPage> {
               children: [
                 _StatusGrid(
                   pendingCount: data?.drafts.length ?? 0,
+                  backupCount: data?.backupCount ?? 0,
                   productCount: data?.catalog.productCount ?? 0,
-                  updatedAt: data?.catalog.updatedAt,
                   syncing: _syncingOffline || widget.syncing,
+                ),
+                const SizedBox(height: 12),
+                _BackupCard(
+                  backupCount: data?.backupCount ?? 0,
+                  backupUpdatedAt: data?.backupUpdatedAt,
+                  onCopyBackup: _copyBackupJson,
                 ),
                 const SizedBox(height: 12),
                 AppSurface(
@@ -179,19 +193,35 @@ class _OfflineCenterPageState extends State<OfflineCenterPage> {
       ),
     );
   }
+
+  Future<void> _copyBackupJson() async {
+    final json = await widget.offlineQueue.backupJson();
+    if (!mounted) {
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: json));
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Backup offline disalin ke clipboard.')),
+    );
+  }
 }
 
 class _StatusGrid extends StatelessWidget {
   const _StatusGrid({
     required this.pendingCount,
+    required this.backupCount,
     required this.productCount,
-    required this.updatedAt,
     required this.syncing,
   });
 
   final int pendingCount;
+  final int backupCount;
   final int productCount;
-  final DateTime? updatedAt;
   final bool syncing;
 
   @override
@@ -216,17 +246,15 @@ class _StatusGrid extends StatelessWidget {
                   : const Color(0xFF10B981),
             ),
             _StatusCard(
-              icon: Icons.inventory_2_outlined,
-              label: 'Produk offline',
-              value: '$productCount',
+              icon: Icons.backup_outlined,
+              label: 'Backup transaksi',
+              value: '$backupCount',
               color: const Color(0xFF4F46E5),
             ),
             _StatusCard(
               icon: syncing ? Icons.sync : Icons.schedule_outlined,
-              label: 'Katalog terakhir',
-              value: updatedAt == null
-                  ? 'Belum ada'
-                  : receiptDateTime(updatedAt!),
+              label: 'Produk offline',
+              value: '$productCount produk',
               color: const Color(0xFF0EA5E9),
             ),
           ],
@@ -292,6 +320,86 @@ class _StatusCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupCard extends StatelessWidget {
+  const _BackupCard({
+    required this.backupCount,
+    required this.backupUpdatedAt,
+    required this.onCopyBackup,
+  });
+
+  final int backupCount;
+  final DateTime? backupUpdatedAt;
+  final VoidCallback onCopyBackup;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.cloud_done_outlined,
+                  color: Color(0xFF059669),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Backup Offline Otomatis',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      backupUpdatedAt == null
+                          ? 'Belum ada backup transaksi.'
+                          : 'Terakhir: ${receiptDateTime(backupUpdatedAt!)}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            backupCount == 0
+                ? 'Saat kasir transaksi offline, APK akan menyimpan salinan lokal otomatis sebagai cadangan.'
+                : '$backupCount transaksi offline tersimpan sebagai cadangan lokal.',
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: backupCount == 0 ? null : onCopyBackup,
+            icon: const Icon(Icons.copy_all_outlined),
+            label: const Text('Salin Backup JSON'),
           ),
         ],
       ),
@@ -424,8 +532,15 @@ class _DraftTile extends StatelessWidget {
 }
 
 class _OfflineCenterData {
-  const _OfflineCenterData({required this.drafts, required this.catalog});
+  const _OfflineCenterData({
+    required this.drafts,
+    required this.catalog,
+    required this.backupCount,
+    required this.backupUpdatedAt,
+  });
 
   final List<OfflineSaleDraft> drafts;
   final OfflineCatalogSnapshot catalog;
+  final int backupCount;
+  final DateTime? backupUpdatedAt;
 }

@@ -19,6 +19,7 @@ import '../services/offline_catalog_store.dart';
 import '../services/offline_sale_queue.dart';
 import '../services/pin_lock_service.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../services/training_mode_store.dart';
 import '../utils/formatters.dart';
 import '../widgets/cashier/cash_movement_page.dart';
 import '../widgets/cashier/cashier_pages.dart';
@@ -76,6 +77,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   final _favoriteProductStore = const FavoriteProductStore();
   final _cartDraftStore = const CartDraftStore();
   final _receiptPrinter = ThermalReceiptPrinter();
+  final _trainingModeStore = const TrainingModeStore();
   final _cartController = CashierCartController();
   final _paymentCalculator = const CashierPaymentCalculator();
   late final CashierLookupController _lookupController;
@@ -103,6 +105,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   bool _pinLockPromptScheduled = false;
   bool _manualSearchKeyboard = false;
   bool _restoringCartDraft = true;
+  bool _trainingMode = false;
   int _selectedTab = 1;
   int _offlinePendingCount = 0;
   String? _message;
@@ -152,6 +155,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     _restoreCartDraft();
     _refreshOfflineCount();
     _loadPinLockStatus(lockIfEnabled: true);
+    _loadTrainingMode();
     _startConnectivityAutoSync();
     _startOfflineAutoSync();
     _loadBootstrap();
@@ -476,6 +480,56 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     if (enabled && lockIfEnabled) {
       _schedulePinLock();
     }
+  }
+
+  Future<void> _loadTrainingMode() async {
+    final enabled = await _trainingModeStore.isEnabled();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _trainingMode = enabled);
+  }
+
+  Future<void> _setTrainingMode(bool enabled) async {
+    if (enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Aktifkan Mode Training?'),
+          content: const Text(
+            'Transaksi training tidak akan masuk laporan, tidak mengurangi stok, dan tidak disimpan ke server. Struk tetap bisa dicetak untuk latihan.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Aktifkan'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+    }
+
+    await _trainingModeStore.setEnabled(enabled);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _trainingMode = enabled);
+    _showMessage(
+      enabled
+          ? 'Mode training aktif. Transaksi hanya simulasi.'
+          : 'Mode training dimatikan.',
+      isError: false,
+    );
   }
 
   void _schedulePinLock() {
@@ -988,6 +1042,39 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
     try {
       final printerSettings = await _receiptPrinter.settings();
+      final receiptContext = OfflineReceiptContext(
+        outletName: _bootstrap?.outlet.name ?? '-',
+        cashierName: widget.user.name,
+        profile: _bootstrap?.receiptProfile ?? ReceiptProfile.fromJson({}),
+        customerName: _selectedCustomer?.name,
+      );
+
+      if (_trainingMode) {
+        final result = _trainingCheckoutResult(
+          paymentMethod: paymentMethod,
+          paidAmount: paidAmount,
+          receiptColumns: printerSettings.receiptColumns,
+          context: receiptContext,
+        );
+
+        if (!mounted) return;
+
+        _resetCheckoutState();
+
+        if (mounted && _paymentSheetOpen) {
+          Navigator.of(context).pop();
+          _paymentSheetOpen = false;
+        }
+
+        _showMessage(
+          'Mode training: transaksi simulasi selesai.',
+          isError: false,
+        );
+        unawaited(_runPostCheckoutPrinterActions(result, printerSettings));
+        _showReceiptDialog(result, training: true);
+        return;
+      }
+
       final outcome = await _checkoutController.submit(
         items: _cart,
         paymentMethod: paymentMethod,
@@ -996,12 +1083,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         customerId: _selectedCustomer?.id,
         redeemPoints: _redeemPoints.clamp(0, _maxRedeemPoints),
         receiptColumns: printerSettings.receiptColumns,
-        offlineReceiptContext: OfflineReceiptContext(
-          outletName: _bootstrap?.outlet.name ?? '-',
-          cashierName: widget.user.name,
-          profile: _bootstrap?.receiptProfile ?? ReceiptProfile.fromJson({}),
-          customerName: _selectedCustomer?.name,
-        ),
+        offlineReceiptContext: receiptContext,
       );
 
       if (!mounted) return;
@@ -1019,7 +1101,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
           'Transaksi ${result.invoiceNumber} berhasil.',
           isError: false,
         );
-        unawaited(_autoPrintReceiptIfEnabled(result, printerSettings));
+        unawaited(_runPostCheckoutPrinterActions(result, printerSettings));
         _showReceiptDialog(result);
       } else {
         final result = outcome.result!;
@@ -1028,7 +1110,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
           'Transaksi offline ${result.invoiceNumber} tersimpan.',
           isError: false,
         );
-        unawaited(_autoPrintReceiptIfEnabled(result, printerSettings));
+        unawaited(_runPostCheckoutPrinterActions(result, printerSettings));
         _showReceiptDialog(result);
         await _refreshOfflineCount();
       }
@@ -1040,6 +1122,50 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         setState(() => _checkoutLoading = false);
       }
     }
+  }
+
+  CheckoutResult _trainingCheckoutResult({
+    required PaymentMethod paymentMethod,
+    required double paidAmount,
+    required int receiptColumns,
+    required OfflineReceiptContext context,
+  }) {
+    final now = DateTime.now();
+    final draft = OfflineSaleDraft(
+      localReference: 'train-${now.microsecondsSinceEpoch}',
+      createdAt: now,
+      cartItems: _cart.map((item) => item.toOfflineJson()).toList(),
+      payment: {
+        'payment_method_id': paymentMethod.id,
+        'amount': paidAmount,
+        if (_referenceController.text.trim().isNotEmpty)
+          'reference_number': _referenceController.text.trim(),
+        'customer_id': _selectedCustomer?.id,
+        if (_redeemPoints > 0)
+          'redeem_points': _redeemPoints.clamp(0, _maxRedeemPoints),
+      },
+    );
+
+    final result = _checkoutController.offlineResultFromDraft(
+      draft: draft,
+      paymentMethod: paymentMethod,
+      receiptColumns: receiptColumns,
+      context: context,
+    );
+
+    return CheckoutResult(
+      invoiceNumber: draft.localReference.toUpperCase(),
+      receiptText: result.receiptText
+          .replaceFirst('STRUK OFFLINE', 'SIMULASI / TRAINING')
+          .replaceFirst('Transaksi offline tersimpan.', 'Transaksi simulasi.')
+          .replaceFirst(
+            'Sync saat internet tersedia.',
+            'Tidak masuk laporan/stok.',
+          ),
+      grandTotal: result.grandTotal,
+      paidAmount: result.paidAmount,
+      changeAmount: result.changeAmount,
+    );
   }
 
   void _resetCheckoutState() {
@@ -1098,11 +1224,12 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     );
   }
 
-  void _showReceiptDialog(CheckoutResult result) {
+  void _showReceiptDialog(CheckoutResult result, {bool training = false}) {
     showDialog<void>(
       context: context,
       builder: (context) => ReceiptDialog(
         result: result,
+        training: training,
         onPrint: _printReceipt,
         onCopy: _copyReceipt,
       ),
@@ -1157,6 +1284,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     }
   }
 
+  Future<void> _runPostCheckoutPrinterActions(
+    CheckoutResult result,
+    ThermalPrinterSettings settings,
+  ) async {
+    await _autoPrintReceiptIfEnabled(result, settings);
+    await _autoOpenCashDrawerIfEnabled(settings);
+  }
+
   Future<void> _autoPrintReceiptIfEnabled(
     CheckoutResult result,
     ThermalPrinterSettings settings,
@@ -1191,6 +1326,43 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
           content: Text(
             'Auto print gagal: $error\nBuka struk untuk cetak ulang.',
           ),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _autoOpenCashDrawerIfEnabled(
+    ThermalPrinterSettings settings,
+  ) async {
+    if (!settings.autoOpenDrawer || settings.selectedPrinter == null) {
+      return;
+    }
+
+    try {
+      await _receiptPrinter.openCashDrawer(printer: settings.selectedPrinter!);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Laci kasir dibuka melalui ${settings.selectedPrinter!.name}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFDC2626),
+          content: Text('Gagal membuka laci kasir: $error'),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'OK',
@@ -1338,7 +1510,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: _refreshCurrentTab,
-                          child: _currentPage(),
+                          child: _currentPageWithStatus(),
                         ),
                       ),
                     ],
@@ -1394,6 +1566,19 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       4 => _shiftPage(),
       _ => _accountPage(),
     };
+  }
+
+  Widget _currentPageWithStatus() {
+    if (!_trainingMode) {
+      return _currentPage();
+    }
+
+    return Column(
+      children: [
+        const _TrainingModeBanner(),
+        Expanded(child: _currentPage()),
+      ],
+    );
   }
 
   Widget _cashierPage() {
@@ -1498,13 +1683,16 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       user: widget.user,
       receiptPrinter: _receiptPrinter,
       offlinePendingCount: _offlinePendingCount,
+      trainingMode: _trainingMode,
       onSettingsChanged: () {
         if (mounted) {
           setState(() {});
         }
       },
+      onTrainingModeChanged: _setTrainingMode,
       onSelectReceiptPrinter: _selectReceiptPrinter,
       onTestReceiptPrinter: _testReceiptPrinter,
+      onTestCashDrawer: _testCashDrawer,
       onSyncOffline: _syncOfflineQueue,
       onOpenOfflineCenter: _openOfflineCenter,
       onRefreshData: _loadBootstrap,
@@ -1538,6 +1726,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   Future<void> _testReceiptPrinter(
     ThermalPrinterDevice printer,
     int receiptColumns,
+    bool openDrawerAfterPrint,
   ) async {
     final now = DateTime.now();
     final line = '-' * receiptColumns;
@@ -1560,12 +1749,46 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         receiptText: receiptText,
       );
 
+      if (openDrawerAfterPrint) {
+        await _receiptPrinter.openCashDrawer(printer: printer);
+      }
+
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tes cetak dikirim ke ${printer.name}.')),
+        SnackBar(
+          content: Text(
+            openDrawerAfterPrint
+                ? 'Tes cetak dikirim dan laci dibuka lewat ${printer.name}.'
+                : 'Tes cetak dikirim ke ${printer.name}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Future<void> _testCashDrawer(ThermalPrinterDevice printer) async {
+    try {
+      await _receiptPrinter.openCashDrawer(printer: printer);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Perintah buka laci dikirim ke ${printer.name}.'),
+        ),
       );
     } catch (error) {
       if (!mounted) {
@@ -1829,6 +2052,40 @@ const _navDestinations = [
     color: Color(0xFF10B981),
   ),
 ];
+
+class _TrainingModeBanner extends StatelessWidget {
+  const _TrainingModeBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFCD34D)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.school_outlined, color: Color(0xFFD97706), size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Mode training aktif. Transaksi hanya simulasi dan tidak mengubah stok/laporan.',
+              style: TextStyle(
+                color: Color(0xFF92400E),
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ColorfulBottomNav extends StatelessWidget {
   const _ColorfulBottomNav({

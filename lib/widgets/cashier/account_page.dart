@@ -12,9 +12,12 @@ class CashierAccountPage extends StatelessWidget {
     required this.user,
     required this.receiptPrinter,
     required this.offlinePendingCount,
+    required this.trainingMode,
     required this.onSettingsChanged,
+    required this.onTrainingModeChanged,
     required this.onSelectReceiptPrinter,
     required this.onTestReceiptPrinter,
+    required this.onTestCashDrawer,
     required this.onSyncOffline,
     required this.onOpenOfflineCenter,
     required this.onRefreshData,
@@ -29,10 +32,17 @@ class CashierAccountPage extends StatelessWidget {
   final UserProfile user;
   final ThermalReceiptPrinter receiptPrinter;
   final int offlinePendingCount;
+  final bool trainingMode;
   final VoidCallback onSettingsChanged;
+  final ValueChanged<bool> onTrainingModeChanged;
   final Future<ThermalPrinterDevice?> Function() onSelectReceiptPrinter;
-  final Future<void> Function(ThermalPrinterDevice printer, int receiptColumns)
+  final Future<void> Function(
+    ThermalPrinterDevice printer,
+    int receiptColumns,
+    bool openDrawerAfterPrint,
+  )
   onTestReceiptPrinter;
+  final Future<void> Function(ThermalPrinterDevice printer) onTestCashDrawer;
   final VoidCallback onSyncOffline;
   final VoidCallback onOpenOfflineCenter;
   final VoidCallback onRefreshData;
@@ -90,6 +100,43 @@ class CashierAccountPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        AppSurface(
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: trainingMode
+                    ? const Color(0xFFFFFBEB)
+                    : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.school_outlined,
+                color: trainingMode
+                    ? const Color(0xFFD97706)
+                    : const Color(0xFF64748B),
+              ),
+            ),
+            title: const Text(
+              'Mode Training',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              trainingMode
+                  ? 'Aktif. Transaksi simulasi tidak masuk laporan dan stok.'
+                  : 'Gunakan untuk latihan kasir tanpa mengubah data asli.',
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            value: trainingMode,
+            onChanged: onTrainingModeChanged,
+          ),
+        ),
+        const SizedBox(height: 12),
         FutureBuilder<ThermalPrinterSettings>(
           future: receiptPrinter.settings(),
           builder: (context, snapshot) {
@@ -97,6 +144,7 @@ class CashierAccountPage extends StatelessWidget {
             final printer = settings?.selectedPrinter;
             final receiptColumns = settings?.receiptColumns ?? 32;
             final autoPrint = settings?.autoPrint ?? false;
+            final autoOpenDrawer = settings?.autoOpenDrawer ?? false;
 
             return AppSurface(
               child: Column(
@@ -199,6 +247,28 @@ class CashierAccountPage extends StatelessWidget {
                             onSettingsChanged();
                           },
                   ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Buka laci otomatis setelah bayar',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      printer == null
+                          ? 'Pilih printer dulu. Laci kasir harus tersambung ke port drawer printer.'
+                          : autoOpenDrawer
+                          ? 'Setelah transaksi berhasil, APK akan mengirim perintah buka laci ke printer.'
+                          : 'Aktifkan jika laci kasir tersambung ke printer thermal.',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    value: autoOpenDrawer,
+                    onChanged: printer == null
+                        ? null
+                        : (value) async {
+                            await receiptPrinter.setAutoOpenDrawer(value);
+                            onSettingsChanged();
+                          },
+                  ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: () async {
@@ -216,10 +286,21 @@ class CashierAccountPage extends StatelessWidget {
                   if (printer != null) ...[
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
-                      onPressed: () =>
-                          onTestReceiptPrinter(printer, receiptColumns),
+                      onPressed: () => onTestReceiptPrinter(
+                        printer,
+                        receiptColumns,
+                        autoOpenDrawer,
+                      ),
                       icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('Tes Cetak'),
+                      label: Text(
+                        autoOpenDrawer ? 'Tes Cetak + Buka Laci' : 'Tes Cetak',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => onTestCashDrawer(printer),
+                      icon: const Icon(Icons.point_of_sale_outlined),
+                      label: const Text('Tes Buka Laci'),
                     ),
                     const SizedBox(height: 8),
                     TextButton.icon(

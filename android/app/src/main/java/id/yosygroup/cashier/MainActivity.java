@@ -60,6 +60,9 @@ public class MainActivity extends FlutterActivity {
                         case "printReceipt":
                             withBluetoothPermission(call, result, () -> printReceipt(call, result));
                             break;
+                        case "openCashDrawer":
+                            withBluetoothPermission(call, result, () -> openCashDrawer(call, result));
+                            break;
                         default:
                             result.notImplemented();
                             break;
@@ -141,6 +144,8 @@ public class MainActivity extends FlutterActivity {
             listBondedPrinters(result);
         } else if ("printReceipt".equals(call.method)) {
             printReceipt(call, result);
+        } else if ("openCashDrawer".equals(call.method)) {
+            openCashDrawer(call, result);
         } else {
             result.notImplemented();
         }
@@ -277,6 +282,63 @@ public class MainActivity extends FlutterActivity {
                                 : exception.getMessage(),
                         null
                 ));
+            }
+        }).start();
+    }
+
+    private void openCashDrawer(MethodCall call, MethodChannel.Result result) {
+        String address = call.argument("address");
+
+        if (address == null || address.trim().isEmpty()) {
+            result.error("NO_PRINTER", "Printer belum dipilih.", null);
+            return;
+        }
+
+        BluetoothAdapter adapter = bluetoothAdapter();
+        if (adapter == null) {
+            result.error("NO_BLUETOOTH", "Perangkat ini tidak punya Bluetooth.", null);
+            return;
+        }
+
+        if (!adapter.isEnabled()) {
+            result.error("BLUETOOTH_OFF", "Bluetooth belum aktif.", null);
+            return;
+        }
+
+        new Thread(() -> {
+            android.bluetooth.BluetoothSocket socket = null;
+
+            try {
+                BluetoothDevice device = adapter.getRemoteDevice(address);
+                UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+                socket = device.createRfcommSocketToServiceRecord(uuid);
+
+                adapter.cancelDiscovery();
+                socket.connect();
+
+                OutputStream output = socket.getOutputStream();
+                writeChunk(output, new byte[]{0x1B, 0x40});
+                // ESC p m t1 t2 — cash drawer pulse. m=0 uses drawer pin 2.
+                writeChunk(output, new byte[]{0x1B, 0x70, 0x00, 0x19, (byte) 0xFA});
+                output.flush();
+                sleepQuietly(160);
+
+                mainThread(() -> result.success(true));
+            } catch (Exception exception) {
+                mainThread(() -> result.error(
+                        "DRAWER_FAILED",
+                        exception.getMessage() == null
+                                ? "Gagal membuka laci kasir."
+                                : exception.getMessage(),
+                        null
+                ));
+            } finally {
+                if (socket != null) {
+                    try {
+                        socket.close();
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         }).start();
     }

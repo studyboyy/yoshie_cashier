@@ -38,11 +38,13 @@ class ThermalPrinterDevice {
 class ThermalPrinterSettings {
   const ThermalPrinterSettings({
     required this.autoPrint,
+    required this.autoOpenDrawer,
     required this.receiptColumns,
     required this.selectedPrinter,
   });
 
   final bool autoPrint;
+  final bool autoOpenDrawer;
   final int receiptColumns;
   final ThermalPrinterDevice? selectedPrinter;
 
@@ -55,6 +57,8 @@ class ThermalReceiptPrinter {
   static const _printerAddressKey = 'yosy_group.receipt_printer.address';
   static const _printerTypeKey = 'yosy_group.receipt_printer.type';
   static const _autoPrintKey = 'yosy_group.receipt_printer.auto_print';
+  static const _autoOpenDrawerKey =
+      'yosy_group.receipt_printer.auto_open_drawer';
   static const _receiptColumnsKey = 'yosy_group.receipt_printer.columns';
   static const _logoPathKey = 'yosy_group.receipt_printer.logo_path';
 
@@ -165,6 +169,7 @@ class ThermalReceiptPrinter {
     await prefs.remove(_printerAddressKey);
     await prefs.remove(_printerTypeKey);
     await prefs.setBool(_autoPrintKey, false);
+    await prefs.setBool(_autoOpenDrawerKey, false);
   }
 
   Future<ThermalPrinterSettings> settings() async {
@@ -173,6 +178,7 @@ class ThermalReceiptPrinter {
 
     return ThermalPrinterSettings(
       autoPrint: prefs.getBool(_autoPrintKey) ?? false,
+      autoOpenDrawer: prefs.getBool(_autoOpenDrawerKey) ?? false,
       receiptColumns: _normalizeColumns(prefs.getInt(_receiptColumnsKey) ?? 32),
       selectedPrinter: printer,
     );
@@ -181,6 +187,11 @@ class ThermalReceiptPrinter {
   Future<void> setAutoPrint(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoPrintKey, enabled);
+  }
+
+  Future<void> setAutoOpenDrawer(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoOpenDrawerKey, enabled);
   }
 
   Future<void> setReceiptColumns(int columns) async {
@@ -215,6 +226,17 @@ class ThermalReceiptPrinter {
       });
     } on PlatformException catch (exception) {
       throw PrinterException(exception.message ?? 'Gagal mencetak struk.');
+    }
+  }
+
+  Future<void> openCashDrawer({required ThermalPrinterDevice printer}) async {
+    try {
+      await saveSelectedPrinter(printer);
+      await _channel.invokeMethod<bool>('openCashDrawer', {
+        'address': printer.address,
+      });
+    } on PlatformException catch (exception) {
+      throw PrinterException(exception.message ?? 'Gagal membuka laci kasir.');
     }
   }
 

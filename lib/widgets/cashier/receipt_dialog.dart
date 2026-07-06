@@ -8,11 +8,13 @@ class ReceiptDialog extends StatelessWidget {
   const ReceiptDialog({
     super.key,
     required this.result,
+    this.training = false,
     required this.onPrint,
     required this.onCopy,
   });
 
   final CheckoutResult result;
+  final bool training;
   final ValueChanged<String> onPrint;
   final ValueChanged<String> onCopy;
 
@@ -36,7 +38,7 @@ class ReceiptDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _ReceiptHeader(result: result),
+              _ReceiptHeader(result: result, training: training),
               const SizedBox(height: 14),
               _ReceiptMetrics(result: result),
               const SizedBox(height: 14),
@@ -61,9 +63,10 @@ class ReceiptDialog extends StatelessWidget {
 }
 
 class _ReceiptHeader extends StatelessWidget {
-  const _ReceiptHeader({required this.result});
+  const _ReceiptHeader({required this.result, required this.training});
 
   final CheckoutResult result;
+  final bool training;
 
   @override
   Widget build(BuildContext context) {
@@ -73,19 +76,27 @@ class _ReceiptHeader extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFFECFDF5),
+            color: training
+                ? const Color(0xFFFFFBEB)
+                : const Color(0xFFECFDF5),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(Icons.check_circle, color: Color(0xFF047857)),
+          child: Icon(
+            training ? Icons.school_outlined : Icons.check_circle,
+            color: training ? const Color(0xFFD97706) : const Color(0xFF047857),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Transaksi Berhasil',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              Text(
+                training ? 'Simulasi Selesai' : 'Transaksi Berhasil',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
