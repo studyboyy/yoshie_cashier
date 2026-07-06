@@ -1160,6 +1160,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       receiptText: _trainingReceiptText(
         result.receiptText,
         receiptColumns,
+        context,
       ),
       grandTotal: result.grandTotal,
       paidAmount: result.paidAmount,
@@ -1167,10 +1168,21 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     );
   }
 
-  String _trainingReceiptText(String receiptText, int receiptColumns) {
+  String _trainingReceiptText(
+    String receiptText,
+    int receiptColumns,
+    OfflineReceiptContext context,
+  ) {
     final width = receiptColumns >= 42 ? 42 : 32;
     final line = '-' * width;
     final rows = receiptText.split('\n');
+    final addressLines = (context.outletAddress ?? '')
+        .split(',')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    final addressAlreadyPrinted = addressLines.isNotEmpty &&
+        addressLines.any((line) => receiptText.contains(line));
     final trainingHeader = [
       line,
       centerReceiptText('MODE TRAINING', width),
@@ -1189,6 +1201,11 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     for (final row in rows) {
       if (!headerInserted && row.trim() == 'STRUK OFFLINE') {
         output.addAll(trainingHeader);
+        if (!addressAlreadyPrinted) {
+          for (final address in addressLines) {
+            output.add(centerReceiptText(address, width));
+          }
+        }
         headerInserted = true;
         continue;
       }

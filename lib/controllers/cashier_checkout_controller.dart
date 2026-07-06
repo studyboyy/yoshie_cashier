@@ -168,7 +168,9 @@ class CashierCheckoutController {
       for (final part in outletAddress.split(',')) {
         final text = part.trim();
         if (text.isNotEmpty) {
-          rows.add(_align(text, width, profile.headerAlign));
+          for (final line in _wrap(text, width)) {
+            rows.add(_align(line, width, profile.headerAlign));
+          }
         }
       }
     }
@@ -267,34 +269,39 @@ class CashierCheckoutController {
   }
 
   String _infoLine(String label, String value, int width) {
-    final safeLabel = _trim(label, (width / 3).floor().clamp(6, 12));
-    final valueWidth = (width - safeLabel.length - 1).clamp(8, width).toInt();
+    final labelWidth = width >= 42 ? 10 : 7;
+    final safeLabel = _trim(label, labelWidth).padRight(labelWidth);
+    final valueWidth = (width - labelWidth).clamp(8, width).toInt();
     final safeValue = _trim(value, valueWidth);
-    final spaces = width - safeLabel.length - safeValue.length;
 
-    return '$safeLabel${' ' * spaces.clamp(1, width).toInt()}$safeValue';
+    return safeLabel + safeValue.padLeft(valueWidth);
   }
 
   String _itemLine(int quantity, double unitPrice, double subtotal, int width) {
-    final left = '${quantity}x ${_money(unitPrice)}';
-    final right = _money(subtotal);
-    final spaces = width - left.length - right.length;
+    final qtyWidth = width >= 42 ? 6 : 5;
+    final priceWidth = width >= 42 ? 14 : 11;
+    final subtotalWidth = width - qtyWidth - priceWidth;
+    final qty = '${quantity}x'.padRight(qtyWidth);
+    final price = _trim(_money(unitPrice), priceWidth).padLeft(priceWidth);
+    final total = _trim(_money(subtotal), subtotalWidth).padLeft(subtotalWidth);
 
-    return spaces > 0 ? '$left${' ' * spaces}$right' : '$left $right';
+    return '$qty$price$total';
   }
 
   String _amountLine(String label, double value, int width) {
     final amount = _money(value);
-    final spaces = width - label.length - amount.length;
+    final safeLabel = _trim(label, width - 9);
+    final spaces = width - safeLabel.length - amount.length;
 
-    return spaces > 0 ? '$label${' ' * spaces}$amount' : '$label $amount';
+    return spaces > 0 ? '$safeLabel${' ' * spaces}$amount' : '$safeLabel $amount';
   }
 
   String _signedAmountLine(String label, double value, int width) {
     final amount = value < 0 ? '-${_money(value.abs())}' : _money(value);
-    final spaces = width - label.length - amount.length;
+    final safeLabel = _trim(label, width - 10);
+    final spaces = width - safeLabel.length - amount.length;
 
-    return spaces > 0 ? '$label${' ' * spaces}$amount' : '$label $amount';
+    return spaces > 0 ? '$safeLabel${' ' * spaces}$amount' : '$safeLabel $amount';
   }
 
   List<String> _wrap(String text, int width) {
