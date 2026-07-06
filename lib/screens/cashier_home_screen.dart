@@ -66,7 +66,6 @@ class CashierHomeScreen extends StatefulWidget {
 class _CashierHomeScreenState extends State<CashierHomeScreen>
     with WidgetsBindingObserver {
   final _searchController = TextEditingController();
-  final _customerSearchController = TextEditingController();
   final _paidController = TextEditingController();
   final _redeemController = TextEditingController(text: '0');
   final _referenceController = TextEditingController();
@@ -84,14 +83,12 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   late final CashierCheckoutController _checkoutController;
   late final CashierOfflineSyncController _offlineSyncController;
   Timer? _searchDebounce;
-  Timer? _customerDebounce;
   Timer? _offlineSyncTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   CashierBootstrap? _bootstrap;
   CashierShiftInfo? _activeShift;
   PaymentMethod? _selectedPaymentMethod;
-  CashierCustomer? _selectedCustomer;
   List<CashierProduct> _favoriteProducts = <CashierProduct>[];
 
   bool _loading = true;
@@ -113,22 +110,12 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
   List<CartItem> get _cart => _cartController.items;
   List<CashierProduct> get _products => _lookupController.products;
-  List<CashierCustomer> get _customers => _lookupController.customers;
   bool get _searching => _lookupController.searchingProducts;
-  bool get _searchingCustomer => _lookupController.searchingCustomers;
   double get _total => _cartController.total;
   double get _negotiationDiscount => _cartController.negotiationDiscount;
-  int get _redeemPoints =>
-      _paymentCalculator.redeemPointsFromText(_redeemController.text);
-  int get _maxRedeemPoints => _paymentCalculator.maxRedeemPoints(
-    customer: _selectedCustomer,
-    total: _total,
-  );
+  int get _maxRedeemPoints => 0;
 
-  double get _pointDiscount => _paymentCalculator.pointDiscount(
-    redeemPoints: _redeemPoints,
-    maxRedeemPoints: _maxRedeemPoints,
-  );
+  double get _pointDiscount => 0;
   double get _payableTotal => _paymentCalculator.payableTotal(
     total: _total,
     pointDiscount: _pointDiscount,
@@ -149,7 +136,6 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       offlineQueue: _offlineQueue,
     );
     _searchController.addListener(_onSearchChanged);
-    _customerSearchController.addListener(_onCustomerSearchChanged);
     _cartController.addListener(_onCartChanged);
     _lookupController.addListener(_onLookupChanged);
     _restoreCartDraft();
@@ -191,12 +177,10 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _searchDebounce?.cancel();
-    _customerDebounce?.cancel();
     _offlineSyncTimer?.cancel();
     _connectivitySubscription?.cancel();
     _messageTimer?.cancel();
     _searchController.dispose();
-    _customerSearchController.dispose();
     _paidController.dispose();
     _redeemController.dispose();
     _referenceController.dispose();
@@ -382,72 +366,10 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     });
   }
 
-  void _onCustomerSearchChanged() {
-    final query = _customerSearchController.text.trim();
-    _customerDebounce?.cancel();
-    _lookupController.setCustomerQuery(query);
-
-    if (query.isEmpty) {
-      _lookupController.clearCustomers();
-      return;
-    }
-
-    _customerDebounce = Timer(const Duration(milliseconds: 350), () {
-      _searchCustomers(query);
-    });
-  }
-
-  void _clearCustomerSearch() {
-    _customerDebounce?.cancel();
-    _customerSearchController.clear();
-    _lookupController.clearCustomers();
-  }
-
-  void _selectCustomer(CashierCustomer customer) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _customerDebounce?.cancel();
-    _customerSearchController.clear();
-    _lookupController.clearCustomers();
-    setState(() {
-      _selectedCustomer = customer;
-      _redeemController.text = '0';
-    });
-  }
-
-  void _clearCustomer() {
-    _customerDebounce?.cancel();
-    _customerSearchController.clear();
-    _lookupController.clearCustomers();
-    setState(() {
-      _selectedCustomer = null;
-      _redeemController.text = '0';
-    });
-  }
-
-  Future<void> _searchCustomers(String query) async {
-    try {
-      final result = await _lookupController.searchCustomers(query);
-      if (!mounted || !result.isCurrent) {
-        return;
-      }
-    } catch (error) {
-      if (!mounted) return;
-      _handleError(error);
-    }
-  }
-
   void _normalizeRedeemPoints() {
-    final points = _paymentCalculator.normalizedRedeemPoints(
-      text: _redeemController.text,
-      customer: _selectedCustomer,
-      total: _total,
-    );
-    final normalized = points.toString();
-    if (_redeemController.text != normalized) {
-      _redeemController.text = normalized;
-      _redeemController.selection = TextSelection.collapsed(
-        offset: normalized.length,
-      );
+    if (_redeemController.text != '0') {
+      _redeemController.text = '0';
+      _redeemController.selection = const TextSelection.collapsed(offset: 1);
     }
   }
 
@@ -998,7 +920,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         paidController: _paidController,
         redeemController: _redeemController,
         referenceController: _referenceController,
-        hasSelectedCustomer: _selectedCustomer != null,
+        hasSelectedCustomer: false,
         maxRedeemPoints: _maxRedeemPoints,
         quickPaidAmounts: _quickPaidAmounts,
         subtotal: _total,
@@ -1056,7 +978,6 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         profile: _bootstrap?.receiptProfile ?? ReceiptProfile.fromJson({}),
         outletPhone: _bootstrap?.outlet.phone,
         outletAddress: _bootstrap?.outlet.address,
-        customerName: _selectedCustomer?.name,
       );
 
       if (_trainingMode) {
@@ -1090,8 +1011,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         paymentMethod: paymentMethod,
         amount: paidAmount,
         referenceNumber: _referenceController.text,
-        customerId: _selectedCustomer?.id,
-        redeemPoints: _redeemPoints.clamp(0, _maxRedeemPoints),
+        customerId: null,
+        redeemPoints: 0,
         receiptColumns: printerSettings.receiptColumns,
         offlineReceiptContext: receiptContext,
       );
@@ -1150,9 +1071,6 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         'amount': paidAmount,
         if (_referenceController.text.trim().isNotEmpty)
           'reference_number': _referenceController.text.trim(),
-        'customer_id': _selectedCustomer?.id,
-        if (_redeemPoints > 0)
-          'redeem_points': _redeemPoints.clamp(0, _maxRedeemPoints),
       },
     );
 
@@ -1243,9 +1161,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
   void _resetCheckoutState() {
     setState(() {
-      _selectedCustomer = null;
       _searchController.clear();
-      _customerSearchController.clear();
       _paidController.clear();
       _redeemController.text = '0';
       _referenceController.clear();
@@ -1659,14 +1575,10 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       api: widget.api,
       searchController: _searchController,
       searchFocusNode: _searchFocusNode,
-      customerSearchController: _customerSearchController,
       manualSearchKeyboard: _manualSearchKeyboard,
       searching: _searching,
-      searchingCustomer: _searchingCustomer,
       products: _products,
       favoriteProducts: _favoriteProducts,
-      customers: _customers,
-      selectedCustomer: _selectedCustomer,
       cart: _cart,
       cartCount: _cartCount,
       total: _total,
@@ -1685,9 +1597,6 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       onClearSearch: _clearSearch,
       onToggleKeyboard: _toggleManualSearchKeyboard,
       onProductTap: _addToCart,
-      onClearCustomer: _clearCustomer,
-      onClearCustomerSearch: _clearCustomerSearch,
-      onSelectCustomer: _selectCustomer,
       onClearCart: _clearCart,
       onOpenPayment: _openPaymentSheet,
       onEditItem: _editCartItemQuantity,

@@ -268,6 +268,24 @@ class ApiClient {
     return CheckoutResult.fromJson(response);
   }
 
+  Future<SaleReturnResult> createSaleReturn({
+    required int saleId,
+    required List<SaleReturnItemRequest> items,
+    required String reason,
+  }) async {
+    final response = await _post(
+      '/cashier/sales/$saleId/returns',
+      body: {
+        'reason': reason.trim().isEmpty
+            ? 'Retur dari aplikasi kasir'
+            : reason.trim(),
+        'items': items.map((item) => item.toJson()).toList(),
+      },
+    );
+
+    return SaleReturnResult.fromJson(response);
+  }
+
   Future<CashierShiftInfo?> shift() async {
     final response = await _get('/cashier/shift');
     final shift = response['active_shift'] as Map<String, dynamic>?;

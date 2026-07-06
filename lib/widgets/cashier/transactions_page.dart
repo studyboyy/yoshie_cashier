@@ -51,6 +51,39 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
           Navigator.of(context).pop();
           widget.onOpenReceipt(sale);
         },
+        onReturn: sale.items.any((item) => item.canReturn)
+            ? () {
+                Navigator.of(context).pop();
+                _showReturnSheet(sale);
+              }
+            : null,
+      ),
+    );
+  }
+
+  void _showReturnSheet(RecentSale sale) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _ReturnSheet(
+        api: widget.api,
+        sale: sale,
+        onSaved: (result) {
+          _reload();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${result.returnNumber} tersimpan. Refund ${rupiah(result.refundAmount)}.',
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -146,17 +179,38 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
         }
 
         final sales = snapshot.data ?? [];
+        final total = sales.fold<double>(
+          0,
+          (sum, sale) => sum + sale.grandTotal,
+        );
 
         return ListView(
           padding: const EdgeInsets.all(12),
           children: [
             Row(
               children: [
-                const Text(
-                  'Transaksi Terbaru',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Transaksi Hari Ini',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${sales.length} transaksi - ${rupiah(total)}',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const Spacer(),
                 IconButton(
                   onPressed: _reload,
                   icon: const Icon(Icons.refresh),
@@ -167,7 +221,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
             const SizedBox(height: 8),
             if (sales.isEmpty)
               const AppSurface(
-                child: EmptyState(text: 'Belum ada transaksi terbaru.'),
+                child: EmptyState(text: 'Belum ada transaksi hari ini.'),
               )
             else
               ...sales.map(
@@ -187,10 +241,15 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
 }
 
 class _SaleDetailSheet extends StatelessWidget {
-  const _SaleDetailSheet({required this.sale, required this.onOpenReceipt});
+  const _SaleDetailSheet({
+    required this.sale,
+    required this.onOpenReceipt,
+    this.onReturn,
+  });
 
   final RecentSale sale;
   final VoidCallback onOpenReceipt;
+  final VoidCallback? onReturn;
 
   @override
   Widget build(BuildContext context) {
@@ -310,10 +369,26 @@ class _SaleDetailSheet extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onOpenReceipt,
-              icon: const Icon(Icons.print_outlined),
-              label: const Text('Buka Struk / Cetak Ulang'),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onOpenReceipt,
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text('Cetak Ulang'),
+                  ),
+                ),
+                if (onReturn != null) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onReturn,
+                      icon: const Icon(Icons.assignment_return_outlined),
+                      label: const Text('Retur'),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -344,7 +419,8 @@ class _SaleItemRow extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '${item.quantity} x ${rupiah(item.unitPrice)}',
+                '${item.quantity} x ${rupiah(item.finalUnitPrice)}'
+                '${item.returnedQuantity > 0 ? ' - retur ${item.returnedQuantity}' : ''}',
                 style: const TextStyle(
                   color: Color(0xFF64748B),
                   fontSize: 12,
@@ -360,6 +436,340 @@ class _SaleItemRow extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ],
+    );
+  }
+}
+
+class _ReturnSheet extends StatefulWidget {
+  const _ReturnSheet({
+    required this.api,
+    required this.sale,
+    required this.onSaved,
+  });
+
+  final ApiClient api;
+  final RecentSale sale;
+  final ValueChanged<SaleReturnResult> onSaved;
+
+  @override
+  State<_ReturnSheet> createState() => _ReturnSheetState();
+}
+
+class _ReturnSheetState extends State<_ReturnSheet> {
+  final _reasonController = TextEditingController(text: 'Retur pelanggan');
+  final Map<int, int> _qtyByItem = {};
+  final Map<int, String> _conditionByItem = {};
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  List<RecentSaleItem> get _returnableItems =>
+      widget.sale.items.where((item) => item.canReturn).toList();
+
+  List<SaleReturnItemRequest> get _selectedItems => _returnableItems
+      .map(
+        (item) => SaleReturnItemRequest(
+          saleItemId: item.id,
+          qty: _qtyByItem[item.id] ?? 0,
+          condition: _conditionByItem[item.id] ?? 'sellable',
+        ),
+      )
+      .where((item) => item.qty > 0)
+      .toList();
+
+  double get _refundTotal {
+    var total = 0.0;
+    for (final item in _returnableItems) {
+      total += (_qtyByItem[item.id] ?? 0) * item.finalUnitPrice;
+    }
+    return total;
+  }
+
+  Future<void> _save() async {
+    final items = _selectedItems;
+    if (items.isEmpty || _saving) {
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final result = await widget.api.createSaleReturn(
+        saleId: widget.sale.id,
+        items: items,
+        reason: _reasonController.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      widget.onSaved(result);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  void _setQty(RecentSaleItem item, int qty) {
+    setState(() {
+      _qtyByItem[item.id] = qty < 0
+          ? 0
+          : (qty > item.returnableQuantity ? item.returnableQuantity : qty);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final items = _returnableItems;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, bottom + 16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.86,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.assignment_return_outlined,
+                    color: Color(0xFFD97706),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Retur Transaksi',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        widget.sale.invoiceNumber,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.separated(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _ReturnItemCard(
+                    item: item,
+                    qty: _qtyByItem[item.id] ?? 0,
+                    condition: _conditionByItem[item.id] ?? 'sellable',
+                    onQtyChanged: (qty) => _setQty(item, qty),
+                    onConditionChanged: (condition) {
+                      setState(() => _conditionByItem[item.id] = condition);
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonController,
+              minLines: 1,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Catatan retur',
+                prefixIcon: Icon(Icons.notes_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Estimasi refund',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    rupiah(_refundTotal),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _selectedItems.isEmpty || _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: const Text('Simpan Retur'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReturnItemCard extends StatelessWidget {
+  const _ReturnItemCard({
+    required this.item,
+    required this.qty,
+    required this.condition,
+    required this.onQtyChanged,
+    required this.onConditionChanged,
+  });
+
+  final RecentSaleItem item;
+  final int qty;
+  final String condition;
+  final ValueChanged<int> onQtyChanged;
+  final ValueChanged<String> onConditionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: qty > 0 ? const Color(0xFFEEF2FF) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: qty > 0 ? const Color(0xFFC7D2FE) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.productName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${item.productSku} - sisa retur ${item.returnableQuantity}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                rupiah(item.finalUnitPrice),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              IconButton.outlined(
+                onPressed: qty <= 0 ? null : () => onQtyChanged(qty - 1),
+                icon: const Icon(Icons.remove),
+              ),
+              SizedBox(
+                width: 54,
+                child: Text(
+                  '$qty',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: qty >= item.returnableQuantity
+                    ? null
+                    : () => onQtyChanged(qty + 1),
+                icon: const Icon(Icons.add),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: condition,
+                  decoration: const InputDecoration(
+                    labelText: 'Kondisi',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'sellable',
+                      child: Text('Bagus, masuk stok'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'damaged',
+                      child: Text('Rusak, jangan masuk stok'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      onConditionChanged(value);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -12,14 +12,10 @@ class CashierMainPage extends StatelessWidget {
     required this.api,
     required this.searchController,
     required this.searchFocusNode,
-    required this.customerSearchController,
     required this.manualSearchKeyboard,
     required this.searching,
-    required this.searchingCustomer,
     required this.products,
     required this.favoriteProducts,
-    required this.customers,
-    required this.selectedCustomer,
     required this.cart,
     required this.cartCount,
     required this.total,
@@ -33,9 +29,6 @@ class CashierMainPage extends StatelessWidget {
     required this.onClearSearch,
     required this.onToggleKeyboard,
     required this.onProductTap,
-    required this.onClearCustomer,
-    required this.onClearCustomerSearch,
-    required this.onSelectCustomer,
     required this.onClearCart,
     required this.onOpenPayment,
     required this.onEditItem,
@@ -60,15 +53,6 @@ class CashierMainPage extends StatelessWidget {
   final VoidCallback onClearSearch;
   final VoidCallback onToggleKeyboard;
   final ValueChanged<CashierProduct> onProductTap;
-
-  // Member
-  final TextEditingController customerSearchController;
-  final bool searchingCustomer;
-  final List<CashierCustomer> customers;
-  final CashierCustomer? selectedCustomer;
-  final VoidCallback onClearCustomer;
-  final VoidCallback onClearCustomerSearch;
-  final ValueChanged<CashierCustomer> onSelectCustomer;
 
   // Cart
   final List<CartItem> cart;
@@ -105,18 +89,7 @@ class CashierMainPage extends StatelessWidget {
             .clamp(112.0, 240.0)
             .toDouble();
 
-        final memberPanel = MemberPanel(
-          selectedCustomer: selectedCustomer,
-          searchController: customerSearchController,
-          searchingCustomer: searchingCustomer,
-          customers: customers,
-          onClearCustomer: onClearCustomer,
-          onClearSearch: onClearCustomerSearch,
-          onSelectCustomer: onSelectCustomer,
-        );
-
         final productPanel = CashierProductPanel(
-          memberPanel: memberPanel,
           searchController: searchController,
           searchFocusNode: searchFocusNode,
           manualSearchKeyboard: manualSearchKeyboard,

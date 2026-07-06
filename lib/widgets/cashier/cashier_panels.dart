@@ -10,7 +10,6 @@ import 'product_tile.dart';
 class CashierProductPanel extends StatelessWidget {
   const CashierProductPanel({
     super.key,
-    required this.memberPanel,
     required this.searchController,
     required this.searchFocusNode,
     required this.manualSearchKeyboard,
@@ -26,7 +25,6 @@ class CashierProductPanel extends StatelessWidget {
     required this.onProductTap,
   });
 
-  final Widget memberPanel;
   final TextEditingController searchController;
   final FocusNode searchFocusNode;
   final bool manualSearchKeyboard;
@@ -68,8 +66,6 @@ class CashierProductPanel extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
-          memberPanel,
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,142 +314,6 @@ class StockAlertPanel extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class MemberPanel extends StatelessWidget {
-  const MemberPanel({
-    super.key,
-    required this.selectedCustomer,
-    required this.searchController,
-    required this.searchingCustomer,
-    required this.customers,
-    required this.onClearCustomer,
-    required this.onClearSearch,
-    required this.onSelectCustomer,
-  });
-
-  final CashierCustomer? selectedCustomer;
-  final TextEditingController searchController;
-  final bool searchingCustomer;
-  final List<CashierCustomer> customers;
-  final VoidCallback onClearCustomer;
-  final VoidCallback onClearSearch;
-  final ValueChanged<CashierCustomer> onSelectCustomer;
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = selectedCustomer;
-
-    if (selected != null) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.verified_user_outlined,
-                color: Color(0xFF047857),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    selected.name,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${selected.memberCode} - ${selected.points} poin',
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              tooltip: 'Hapus member',
-              onPressed: onClearCustomer,
-              icon: const Icon(Icons.close),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          controller: searchController,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            labelText: 'Cari member',
-            prefixIcon: const Icon(Icons.person_search_outlined),
-            suffixIcon: searchingCustomer
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : searchController.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Bersihkan',
-                    onPressed: onClearSearch,
-                    icon: const Icon(Icons.close),
-                  ),
-          ),
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 160),
-          child: customers.isEmpty
-              ? const SizedBox.shrink()
-              : Padding(
-                  key: ValueKey(
-                    'customers-${customers.length}-${searchController.text}',
-                  ),
-                  padding: const EdgeInsets.only(top: 8),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 156),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: customers.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 6),
-                      itemBuilder: (context, index) {
-                        final customer = customers[index];
-                        return CustomerTile(
-                          customer: customer,
-                          onTap: () => onSelectCustomer(customer),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-        ),
-      ],
     );
   }
 }

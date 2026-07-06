@@ -469,23 +469,89 @@ class RecentSale {
 
 class RecentSaleItem {
   const RecentSaleItem({
+    required this.id,
+    required this.productId,
     required this.productName,
+    required this.productSku,
     required this.quantity,
+    required this.returnedQuantity,
+    required this.returnableQuantity,
     required this.unitPrice,
+    required this.discountAmount,
     required this.subtotal,
   });
 
+  final int id;
+  final int productId;
   final String productName;
+  final String productSku;
   final int quantity;
+  final int returnedQuantity;
+  final int returnableQuantity;
   final double unitPrice;
+  final double discountAmount;
   final double subtotal;
+
+  bool get canReturn => id > 0 && returnableQuantity > 0;
+
+  double get finalUnitPrice => quantity <= 0 ? unitPrice : subtotal / quantity;
 
   factory RecentSaleItem.fromJson(Map<String, dynamic> json) {
     return RecentSaleItem(
+      id: _asInt(json['id']),
+      productId: _asInt(json['product_id']),
       productName: json['product_name'] as String? ?? '-',
+      productSku: json['product_sku'] as String? ?? '-',
       quantity: _asInt(json['quantity']),
+      returnedQuantity: _asInt(json['returned_quantity']),
+      returnableQuantity: _asInt(json['returnable_quantity']),
       unitPrice: _asDouble(json['unit_price']),
+      discountAmount: _asDouble(json['discount_amount']),
       subtotal: _asDouble(json['subtotal']),
+    );
+  }
+}
+
+class SaleReturnItemRequest {
+  const SaleReturnItemRequest({
+    required this.saleItemId,
+    required this.qty,
+    required this.condition,
+  });
+
+  final int saleItemId;
+  final int qty;
+  final String condition;
+
+  Map<String, dynamic> toJson() => {
+    'sale_item_id': saleItemId,
+    'qty': qty,
+    'condition': condition,
+  };
+}
+
+class SaleReturnResult {
+  const SaleReturnResult({
+    required this.returnNumber,
+    required this.refundAmount,
+    this.message,
+    this.sale,
+  });
+
+  final String returnNumber;
+  final double refundAmount;
+  final String? message;
+  final RecentSale? sale;
+
+  factory SaleReturnResult.fromJson(Map<String, dynamic> json) {
+    final data = json['return'] as Map<String, dynamic>? ?? {};
+    final sale = json['sale'] as Map<String, dynamic>?;
+
+    return SaleReturnResult(
+      returnNumber: data['return_number'] as String? ?? '-',
+      refundAmount: _asDouble(data['refund_amount']),
+      message: json['message'] as String?,
+      sale: sale == null ? null : RecentSale.fromJson(sale),
     );
   }
 }
