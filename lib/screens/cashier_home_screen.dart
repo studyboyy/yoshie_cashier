@@ -1046,6 +1046,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         outletName: _bootstrap?.outlet.name ?? '-',
         cashierName: widget.user.name,
         profile: _bootstrap?.receiptProfile ?? ReceiptProfile.fromJson({}),
+        outletPhone: _bootstrap?.outlet.phone,
+        outletAddress: _bootstrap?.outlet.address,
         customerName: _selectedCustomer?.name,
       );
 
@@ -1155,17 +1157,62 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
     return CheckoutResult(
       invoiceNumber: draft.localReference.toUpperCase(),
-      receiptText: result.receiptText
-          .replaceFirst('STRUK OFFLINE', 'SIMULASI / TRAINING')
-          .replaceFirst('Transaksi offline tersimpan.', 'Transaksi simulasi.')
-          .replaceFirst(
-            'Sync saat internet tersedia.',
-            'Tidak masuk laporan/stok.',
-          ),
+      receiptText: _trainingReceiptText(
+        result.receiptText,
+        receiptColumns,
+      ),
       grandTotal: result.grandTotal,
       paidAmount: result.paidAmount,
       changeAmount: result.changeAmount,
     );
+  }
+
+  String _trainingReceiptText(String receiptText, int receiptColumns) {
+    final width = receiptColumns >= 42 ? 42 : 32;
+    final line = '-' * width;
+    final rows = receiptText.split('\n');
+    final trainingHeader = [
+      line,
+      centerReceiptText('MODE TRAINING', width),
+      centerReceiptText('SIMULASI TRANSAKSI', width),
+      line,
+    ];
+    final trainingFooter = [
+      line,
+      centerReceiptText('STRUK INI HANYA LATIHAN', width),
+      centerReceiptText('Tidak masuk laporan/stok', width),
+    ];
+    final output = <String>[];
+    var headerInserted = false;
+    var footerInserted = false;
+
+    for (final row in rows) {
+      if (!headerInserted && row.trim() == 'STRUK OFFLINE') {
+        output.addAll(trainingHeader);
+        headerInserted = true;
+        continue;
+      }
+
+      if (row.trim() == 'Transaksi offline tersimpan.' ||
+          row.trim() == 'Sync saat internet tersedia.') {
+        if (!footerInserted) {
+          output.addAll(trainingFooter);
+          footerInserted = true;
+        }
+        continue;
+      }
+
+      output.add(row);
+    }
+
+    if (!headerInserted) {
+      output.insertAll(output.isEmpty ? 0 : 1, trainingHeader);
+    }
+    if (!footerInserted) {
+      output.addAll(trainingFooter);
+    }
+
+    return output.join('\n');
   }
 
   void _resetCheckoutState() {

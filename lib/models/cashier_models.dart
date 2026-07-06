@@ -1,15 +1,25 @@
 class OutletInfo {
-  const OutletInfo({required this.id, required this.name, required this.code});
+  const OutletInfo({
+    required this.id,
+    required this.name,
+    required this.code,
+    this.phone,
+    this.address,
+  });
 
   final int id;
   final String name;
   final String code;
+  final String? phone;
+  final String? address;
 
   factory OutletInfo.fromJson(Map<String, dynamic> json) {
     return OutletInfo(
       id: _asInt(json['id']),
       name: json['name'] as String? ?? '-',
       code: json['code'] as String? ?? '-',
+      phone: json['phone'] as String?,
+      address: json['address'] as String?,
     );
   }
 }

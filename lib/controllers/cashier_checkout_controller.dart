@@ -26,12 +26,16 @@ class OfflineReceiptContext {
     required this.outletName,
     required this.cashierName,
     required this.profile,
+    this.outletPhone,
+    this.outletAddress,
     this.customerName,
   });
 
   final String outletName;
   final String cashierName;
   final ReceiptProfile profile;
+  final String? outletPhone;
+  final String? outletAddress;
   final String? customerName;
 }
 
@@ -159,15 +163,28 @@ class CashierCheckoutController {
 
     rows.add(_align('STRUK OFFLINE', width, profile.headerAlign));
 
+    final outletAddress = (context.outletAddress ?? '').trim();
+    if (outletAddress.isNotEmpty) {
+      for (final part in outletAddress.split(',')) {
+        final text = part.trim();
+        if (text.isNotEmpty) {
+          rows.add(_align(text, width, profile.headerAlign));
+        }
+      }
+    }
+
     if (profile.headerNote.trim().isNotEmpty) {
       for (final text in _wrap(profile.headerNote, width)) {
         rows.add(_align(text, width, profile.headerAlign));
       }
     }
 
-    if (profile.storePhone.trim().isNotEmpty) {
+    final receiptPhone = (context.outletPhone ?? '').trim().isNotEmpty
+        ? context.outletPhone!.trim()
+        : profile.storePhone.trim();
+    if (receiptPhone.isNotEmpty) {
       rows.add(
-        _align('Telp: ${profile.storePhone}', width, profile.headerAlign),
+        _align('Telp: $receiptPhone', width, profile.headerAlign),
       );
     }
 
