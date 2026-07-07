@@ -351,10 +351,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
   void _refocusSearch() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        if (!_manualSearchKeyboard) {
-          SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-        }
+      if (!mounted || _selectedTab != 1) {
+        return;
+      }
+
+      _searchFocusNode.requestFocus();
+
+      if (!_manualSearchKeyboard) {
+        SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       }
     });
   }
