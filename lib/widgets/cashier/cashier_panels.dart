@@ -41,157 +41,173 @@ class CashierProductPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final searchQuery = searchController.text.trim();
-    final showSearchResults = searchQuery.isNotEmpty && products.isNotEmpty;
-    final showMainProducts = searchQuery.isEmpty || !showSearchResults;
-    final mainProducts = searchQuery.isEmpty ? favoriteProducts : products;
-    final mainTitle = searchQuery.isEmpty ? 'Produk Favorit' : 'Produk';
-    final mainCount = searchQuery.isEmpty
-        ? '${favoriteProducts.length}/5'
-        : '${products.length} hasil';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final searchQuery = searchController.text.trim();
+        final showSearchResults = searchQuery.isNotEmpty && products.isNotEmpty;
+        final showMainProducts = searchQuery.isEmpty || !showSearchResults;
+        final mainProducts = searchQuery.isEmpty ? favoriteProducts : products;
+        final mainTitle = searchQuery.isEmpty ? 'Produk Favorit' : 'Produk';
+        final mainCount = searchQuery.isEmpty
+            ? '${favoriteProducts.length}/5'
+            : '${products.length} hasil';
+        final compact = constraints.maxWidth < 330 || constraints.maxHeight < 520;
+        final resultMaxHeight = constraints.maxHeight < 520 ? 176.0 : 260.0;
 
-    return AppSurface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Kasir',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Cari produk, scan barcode, lalu masukkan ke keranjang.',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return AppSurface(
+          padding: EdgeInsets.all(compact ? 12 : 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: searchController,
-                  focusNode: searchFocusNode,
-                  autofocus: false,
-                  keyboardType: TextInputType.text,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    labelText: 'Cari / scan barcode',
-                    helperText: manualSearchKeyboard
-                        ? 'Mode ketik manual aktif'
-                        : 'Scanner aktif - ketuk untuk mengetik manual',
-                    prefixIcon: const Icon(Icons.qr_code_scanner),
-                    suffixIcon: SearchFieldActions(
-                      hasText: searchController.text.isNotEmpty,
-                      manualKeyboard: manualSearchKeyboard,
-                      onClear: onClearSearch,
-                      onToggleKeyboard: onToggleKeyboard,
-                    ),
-                  ),
-                  onTap: onSearchTap,
-                  onSubmitted: (_) => onSearchSubmitted(),
+              Text(
+                'Kasir',
+                style: TextStyle(
+                  fontSize: compact ? 17 : 18,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SizedBox(
-                  height: 48,
-                  width: 48,
-                  child: FilledButton(
-                    onPressed: searching ? null : onSearchSubmitted,
-                    style: FilledButton.styleFrom(padding: EdgeInsets.zero),
-                    child: searching
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.search),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 10),
-            MessageBanner(message: message!, isError: messageIsError),
-          ],
-          const SizedBox(height: 14),
-          if (showSearchResults) ...[
-            _FloatingSearchResults(
-              products: products,
-              onProductTap: onProductTap,
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (showMainProducts) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    mainTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  mainCount,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+              if (!compact) ...[
+                const SizedBox(height: 4),
+                const Text(
+                  'Cari produk, scan barcode, lalu masukkan ke keranjang.',
+                  style: TextStyle(
                     color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: mainProducts.isEmpty
-                    ? EmptyState(
-                        key: ValueKey(
-                          searchQuery.isEmpty
-                              ? 'empty-favorites'
-                              : 'empty-products',
+              SizedBox(height: compact ? 10 : 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: searchController,
+                      focusNode: searchFocusNode,
+                      autofocus: false,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        labelText: 'Cari / scan barcode',
+                        helperText: compact
+                            ? null
+                            : (manualSearchKeyboard
+                                  ? 'Mode ketik manual aktif'
+                                  : 'Scanner aktif - ketuk untuk mengetik manual'),
+                        prefixIcon: const Icon(Icons.qr_code_scanner),
+                        suffixIcon: SearchFieldActions(
+                          hasText: searchController.text.isNotEmpty,
+                          manualKeyboard: manualSearchKeyboard,
+                          onClear: onClearSearch,
+                          onToggleKeyboard: onToggleKeyboard,
                         ),
-                        text: searchQuery.isEmpty
-                            ? 'Belum ada produk favorit. Buka daftar produk cabang lalu pilih ikon bintang.'
-                            : 'Produk tidak ditemukan.',
-                      )
-                    : ListView.separated(
-                        key: ValueKey(
-                          'products-${mainProducts.length}-$searchQuery',
-                        ),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        itemCount: mainProducts.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final product = mainProducts[index];
-                          return ProductTile(
-                            product: product,
-                            onTap: product.stock <= 0
-                                ? null
-                                : () => onProductTap(product),
-                          );
-                        },
                       ),
+                      onTap: onSearchTap,
+                      onSubmitted: (_) => onSearchSubmitted(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: EdgeInsets.only(top: compact ? 4 : 8),
+                    child: SizedBox(
+                      height: compact ? 44 : 48,
+                      width: compact ? 44 : 48,
+                      child: FilledButton(
+                        onPressed: searching ? null : onSearchSubmitted,
+                        style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                        child: searching
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.search),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ] else
-            const Spacer(),
-        ],
-      ),
+              if (message != null) ...[
+                SizedBox(height: compact ? 8 : 10),
+                MessageBanner(message: message!, isError: messageIsError),
+              ],
+              SizedBox(height: compact ? 10 : 14),
+              if (showSearchResults) ...[
+                _FloatingSearchResults(
+                  products: products,
+                  maxHeight: resultMaxHeight,
+                  onProductTap: onProductTap,
+                ),
+                SizedBox(height: compact ? 10 : 14),
+              ],
+              if (showMainProducts) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        mainTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      mainCount,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: mainProducts.isEmpty
+                        ? EmptyState(
+                            key: ValueKey(
+                              searchQuery.isEmpty
+                                  ? 'empty-favorites'
+                                  : 'empty-products',
+                            ),
+                            text: searchQuery.isEmpty
+                                ? 'Belum ada produk favorit. Buka daftar produk cabang lalu pilih ikon bintang.'
+                                : 'Produk tidak ditemukan.',
+                          )
+                        : ListView.separated(
+                            key: ValueKey(
+                              'products-${mainProducts.length}-$searchQuery',
+                            ),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            itemCount: mainProducts.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final product = mainProducts[index];
+                              return ProductTile(
+                                product: product,
+                                onTap: product.stock <= 0
+                                    ? null
+                                    : () => onProductTap(product),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -199,10 +215,12 @@ class CashierProductPanel extends StatelessWidget {
 class _FloatingSearchResults extends StatelessWidget {
   const _FloatingSearchResults({
     required this.products,
+    required this.maxHeight,
     required this.onProductTap,
   });
 
   final List<CashierProduct> products;
+  final double maxHeight;
   final ValueChanged<CashierProduct> onProductTap;
 
   @override
@@ -215,7 +233,7 @@ class _FloatingSearchResults extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
       child: Container(
-        constraints: const BoxConstraints(maxHeight: 260),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFE2E8F0)),

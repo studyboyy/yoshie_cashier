@@ -2014,7 +2014,12 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final useRail = constraints.maxWidth >= 840;
+        final isLandscape = constraints.maxWidth > constraints.maxHeight;
+        final useRail =
+            constraints.maxWidth >= 840 ||
+            (isLandscape &&
+                constraints.maxWidth >= 680 &&
+                constraints.maxHeight >= 360);
 
         return Scaffold(
           resizeToAvoidBottomInset: true,

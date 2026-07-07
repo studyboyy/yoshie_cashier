@@ -73,21 +73,19 @@ class CashierMainPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isLandscape = constraints.maxWidth > constraints.maxHeight;
-        final hasEnoughHeightForSplit = constraints.maxHeight >= 420;
-        final isWide =
-            constraints.maxWidth >= 760 ||
-            (isLandscape &&
-                constraints.maxWidth >= 680 &&
-                hasEnoughHeightForSplit);
-        final pagePadding = constraints.maxWidth < 380 ? 8.0 : 12.0;
-        final gap = constraints.maxWidth < 380 ? 8.0 : 12.0;
-        final cartWidth = constraints.maxWidth >= 1000
-            ? 400.0
-            : (constraints.maxWidth * 0.42).clamp(292.0, 380.0).toDouble();
-        final compactCartHeight = (constraints.maxHeight * 0.36)
-            .clamp(112.0, 240.0)
-            .toDouble();
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        final isLandscape = width > height;
+        final pagePadding = width < 360 ? 6.0 : (width < 520 ? 8.0 : 12.0);
+        final gap = width < 360 ? 8.0 : 12.0;
+        final availableWidth = width - (pagePadding * 2);
+        final availableHeight = height - (pagePadding * 2);
+        final canSplitHorizontally =
+            availableWidth >= 560 &&
+            availableHeight >= 340 &&
+            (width >= 720 || isLandscape);
+        final cartWidth = _cartPanelWidth(availableWidth, gap);
+        final compactCartHeight = _stackedCartHeight(availableHeight);
 
         final productPanel = CashierProductPanel(
           searchController: searchController,
@@ -105,7 +103,7 @@ class CashierMainPage extends StatelessWidget {
           onProductTap: onProductTap,
         );
 
-        final Widget content = isWide
+        final Widget content = canSplitHorizontally
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -135,22 +133,24 @@ class CashierMainPage extends StatelessWidget {
                 children: [
                   Expanded(child: productPanel),
                   SizedBox(height: gap),
-                  CartPanel(
-                    cart: cart,
-                    cartCount: cartCount,
-                    total: total,
-                    pointDiscount: pointDiscount,
-                    payableTotal: payableTotal,
-                    checkoutLoading: checkoutLoading,
-                    onClearCart: onClearCart,
-                    onOpenPayment: onOpenPayment,
-                    onEditItem: onEditItem,
-                    onRemoveItem: onRemoveItem,
-                    onDecrementItem: onDecrementItem,
-                    onIncrementItem: onIncrementItem,
-                    onNegotiateItem: onNegotiateItem,
-                    compact: true,
-                    compactCartMaxHeight: compactCartHeight,
+                  SizedBox(
+                    height: compactCartHeight,
+                    child: CartPanel(
+                      cart: cart,
+                      cartCount: cartCount,
+                      total: total,
+                      pointDiscount: pointDiscount,
+                      payableTotal: payableTotal,
+                      checkoutLoading: checkoutLoading,
+                      onClearCart: onClearCart,
+                      onOpenPayment: onOpenPayment,
+                      onEditItem: onEditItem,
+                      onRemoveItem: onRemoveItem,
+                      onDecrementItem: onDecrementItem,
+                      onIncrementItem: onIncrementItem,
+                      onNegotiateItem: onNegotiateItem,
+                      compact: false,
+                    ),
                   ),
                 ],
               );
@@ -158,5 +158,28 @@ class CashierMainPage extends StatelessWidget {
         return Padding(padding: EdgeInsets.all(pagePadding), child: content);
       },
     );
+  }
+
+  double _cartPanelWidth(double availableWidth, double gap) {
+    final preferred = (availableWidth * 0.40).clamp(292.0, 400.0).toDouble();
+    final maxForProduct = availableWidth - gap - 270;
+
+    if (maxForProduct < 292) {
+      return preferred;
+    }
+
+    return preferred.clamp(292.0, maxForProduct).toDouble();
+  }
+
+  double _stackedCartHeight(double availableHeight) {
+    if (availableHeight < 430) {
+      return (availableHeight * 0.58).clamp(230.0, 260.0).toDouble();
+    }
+
+    if (availableHeight < 620) {
+      return (availableHeight * 0.48).clamp(260.0, 300.0).toDouble();
+    }
+
+    return (availableHeight * 0.36).clamp(260.0, 340.0).toDouble();
   }
 }
