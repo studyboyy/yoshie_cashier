@@ -261,7 +261,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
         final sales = snapshot.data ?? [];
         final total = sales.fold<double>(
           0,
-          (sum, sale) => sum + sale.grandTotal,
+          (sum, sale) => sum + sale.netTotal,
         );
 
         return ListView(
@@ -450,7 +450,17 @@ class _SaleDetailSheet extends StatelessWidget {
                     label: 'Pembayaran',
                     value: sale.paymentMethod ?? '-',
                   ),
-                  _DetailRow(label: 'Total', value: rupiah(sale.grandTotal)),
+                  _DetailRow(label: 'Total awal', value: rupiah(sale.grandTotal)),
+                  if (sale.returnedTotal > 0)
+                    _DetailRow(
+                      label: 'Retur',
+                      value: '- ${rupiah(sale.returnedTotal)}',
+                    ),
+                  if (sale.returnedTotal > 0)
+                    _DetailRow(
+                      label: 'Total bersih',
+                      value: rupiah(sale.netTotal),
+                    ),
                   _DetailRow(label: 'Bayar', value: rupiah(sale.paidAmount)),
                   _DetailRow(
                     label: 'Kembali',

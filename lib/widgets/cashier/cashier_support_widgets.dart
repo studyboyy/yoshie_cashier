@@ -411,9 +411,35 @@ class RecentSaleTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                rupiah(sale.grandTotal),
-                style: const TextStyle(fontWeight: FontWeight.w900),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (sale.returnedTotal > 0)
+                    Text(
+                      rupiah(sale.grandTotal),
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  Text(
+                    rupiah(sale.netTotal),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  if (sale.returnedTotal > 0)
+                    Text(
+                      sale.returnStatus == 'full'
+                          ? 'Retur full'
+                          : 'Retur sebagian',
+                      style: const TextStyle(
+                        color: Color(0xFFD97706),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),

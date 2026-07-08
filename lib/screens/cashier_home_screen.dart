@@ -1587,7 +1587,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         CheckoutResult(
           invoiceNumber: sale.invoiceNumber,
           receiptText: sale.receiptText!,
-          grandTotal: sale.grandTotal,
+          grandTotal: sale.netTotal,
           paidAmount: sale.paidAmount,
           changeAmount: sale.changeAmount,
         ),
@@ -1634,7 +1634,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     required List<RecentSale> sales,
     required String receiptText,
   }) {
-    final total = sales.fold<double>(0, (sum, sale) => sum + sale.grandTotal);
+    final total = sales.fold<double>(0, (sum, sale) => sum + sale.netTotal);
 
     showDialog<void>(
       context: context,
@@ -1804,11 +1804,14 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     final width = receiptColumns >= 42 ? 42 : 32;
     final line = '-' * width;
     final now = DateTime.now();
-    final total = sales.fold<double>(0, (sum, sale) => sum + sale.grandTotal);
+    final total = sales.fold<double>(0, (sum, sale) => sum + sale.netTotal);
     final itemCount = sales.fold<int>(
       0,
-      (sum, sale) =>
-          sum + sale.items.fold<int>(0, (qty, item) => qty + item.quantity),
+      (sum, sale) => sum + sale.items.fold<int>(
+        0,
+        (qty, item) =>
+            qty + (item.quantity - item.returnedQuantity).clamp(0, 999999),
+      ),
     );
     final rows = <String>[
       centerReceiptText(
@@ -1837,7 +1840,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
     for (final sale in sales) {
       rows.add(
-        _receiptPairLine(sale.invoiceNumber, rupiah(sale.grandTotal), width),
+        _receiptPairLine(sale.invoiceNumber, rupiah(sale.netTotal), width),
       );
       final paidAt = sale.paidAt;
       if (paidAt != null) {
@@ -1931,7 +1934,15 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       );
     }).toList();
 
-    final updatedSale = sale.copyWith(items: updatedItems);
+    final returnedTotal = sale.returnedTotal + refundAmount;
+    final updatedSale = sale.copyWith(
+      items: updatedItems,
+      returnedTotal: returnedTotal,
+      netTotal: (sale.grandTotal - returnedTotal)
+          .clamp(0, double.infinity)
+          .toDouble(),
+      returnStatus: returnedTotal >= sale.grandTotal ? 'full' : 'partial',
+    );
     setState(() {
       _trainingSales = _trainingSales
           .map(
@@ -2004,7 +2015,15 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       );
     }).toList();
 
-    final updatedSale = sale.copyWith(items: updatedItems);
+    final returnedTotal = sale.returnedTotal + refundAmount;
+    final updatedSale = sale.copyWith(
+      items: updatedItems,
+      returnedTotal: returnedTotal,
+      netTotal: (sale.grandTotal - returnedTotal)
+          .clamp(0, double.infinity)
+          .toDouble(),
+      returnStatus: returnedTotal >= sale.grandTotal ? 'full' : 'partial',
+    );
 
     return SaleReturnResult(
       returnNumber: '$returnPrefix-${DateTime.now().millisecondsSinceEpoch}',

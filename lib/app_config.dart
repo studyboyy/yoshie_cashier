@@ -23,6 +23,6 @@ class AppConfig {
   static const httpTimeoutSeconds = 20;
 
   /// App version shown in the About / Account page.
-  static const appVersion = '1.1.19';
-  static const appBuild = 21;
+  static const appVersion = '1.1.20';
+  static const appBuild = 22;
 }

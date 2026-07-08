@@ -431,6 +431,9 @@ class RecentSale {
     required this.id,
     required this.invoiceNumber,
     required this.grandTotal,
+    this.returnedTotal = 0,
+    double? netTotal,
+    this.returnStatus = 'none',
     required this.paidAmount,
     required this.changeAmount,
     this.paidAt,
@@ -439,13 +442,16 @@ class RecentSale {
     this.items = const <RecentSaleItem>[],
     this.receiptText,
     this.localOnly = false,
-  });
+  }) : netTotal = netTotal ?? grandTotal - returnedTotal;
 
   final int id;
   final String invoiceNumber;
   final DateTime? paidAt;
   final String? customer;
   final double grandTotal;
+  final double returnedTotal;
+  final double netTotal;
+  final String returnStatus;
   final double paidAmount;
   final double changeAmount;
   final String? paymentMethod;
@@ -459,6 +465,9 @@ class RecentSale {
     DateTime? paidAt,
     String? customer,
     double? grandTotal,
+    double? returnedTotal,
+    double? netTotal,
+    String? returnStatus,
     double? paidAmount,
     double? changeAmount,
     String? paymentMethod,
@@ -472,6 +481,9 @@ class RecentSale {
       paidAt: paidAt ?? this.paidAt,
       customer: customer ?? this.customer,
       grandTotal: grandTotal ?? this.grandTotal,
+      returnedTotal: returnedTotal ?? this.returnedTotal,
+      netTotal: netTotal ?? this.netTotal,
+      returnStatus: returnStatus ?? this.returnStatus,
       paidAmount: paidAmount ?? this.paidAmount,
       changeAmount: changeAmount ?? this.changeAmount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
@@ -482,12 +494,18 @@ class RecentSale {
   }
 
   factory RecentSale.fromJson(Map<String, dynamic> json) {
+    final grandTotal = _asDouble(json['grand_total']);
+    final returnedTotal = _asDouble(json['returned_total']);
+
     return RecentSale(
       id: _asInt(json['id']),
       invoiceNumber: json['invoice_number'] as String? ?? '-',
       paidAt: DateTime.tryParse(json['paid_at'] as String? ?? '')?.toLocal(),
       customer: json['customer'] as String?,
-      grandTotal: _asDouble(json['grand_total']),
+      grandTotal: grandTotal,
+      returnedTotal: returnedTotal,
+      netTotal: _asDouble(json['net_total'] ?? (grandTotal - returnedTotal)),
+      returnStatus: json['return_status'] as String? ?? 'none',
       paidAmount: _asDouble(json['paid_amount']),
       changeAmount: _asDouble(json['change_amount']),
       paymentMethod: json['payment_method'] as String?,
@@ -507,6 +525,9 @@ class RecentSale {
       'paid_at': paidAt?.toIso8601String(),
       'customer': customer,
       'grand_total': grandTotal,
+      'returned_total': returnedTotal,
+      'net_total': netTotal,
+      'return_status': returnStatus,
       'paid_amount': paidAmount,
       'change_amount': changeAmount,
       'payment_method': paymentMethod,
