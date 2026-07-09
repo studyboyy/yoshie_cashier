@@ -430,6 +430,7 @@ class RecentSale {
   const RecentSale({
     required this.id,
     required this.invoiceNumber,
+    this.localReference,
     required this.grandTotal,
     this.returnedTotal = 0,
     double? netTotal,
@@ -446,6 +447,7 @@ class RecentSale {
 
   final int id;
   final String invoiceNumber;
+  final String? localReference;
   final DateTime? paidAt;
   final String? customer;
   final double grandTotal;
@@ -462,6 +464,7 @@ class RecentSale {
   RecentSale copyWith({
     int? id,
     String? invoiceNumber,
+    String? localReference,
     DateTime? paidAt,
     String? customer,
     double? grandTotal,
@@ -478,6 +481,7 @@ class RecentSale {
     return RecentSale(
       id: id ?? this.id,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      localReference: localReference ?? this.localReference,
       paidAt: paidAt ?? this.paidAt,
       customer: customer ?? this.customer,
       grandTotal: grandTotal ?? this.grandTotal,
@@ -500,6 +504,7 @@ class RecentSale {
     return RecentSale(
       id: _asInt(json['id']),
       invoiceNumber: json['invoice_number'] as String? ?? '-',
+      localReference: json['local_reference'] as String?,
       paidAt: DateTime.tryParse(json['paid_at'] as String? ?? '')?.toLocal(),
       customer: json['customer'] as String?,
       grandTotal: grandTotal,
@@ -522,6 +527,7 @@ class RecentSale {
     return {
       'id': id,
       'invoice_number': invoiceNumber,
+      if (localReference != null) 'local_reference': localReference,
       'paid_at': paidAt?.toIso8601String(),
       'customer': customer,
       'grand_total': grandTotal,

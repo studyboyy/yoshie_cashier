@@ -516,11 +516,29 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       await _offlineSaleHistoryStore.removeMany(result.syncedReferences);
       await _loadOfflineSales();
 
-      if (!silent && result.syncedCount > 0) {
-        _showMessage(
-          '${result.syncedCount} transaksi offline berhasil disinkronkan.',
-          isError: false,
-        );
+      if (!silent) {
+        if (result.syncedCount > 0 && result.failedCount == 0) {
+          _showMessage(
+            '${result.syncedCount} transaksi offline berhasil disinkronkan.',
+            isError: false,
+          );
+        } else if (result.syncedCount > 0 && result.failedCount > 0) {
+          _showMessage(
+            '${result.syncedCount} transaksi berhasil, ${result.failedCount} gagal. Sisa ${result.remainingCount} pending. Cek Sync Offline untuk detail.',
+            isError: true,
+          );
+        } else if (result.failedCount > 0) {
+          final firstError = result.failedReferences.entries.first;
+          _showMessage(
+            'Sync gagal: ${firstError.key} - ${firstError.value}',
+            isError: true,
+          );
+        } else {
+          _showMessage(
+            'Tidak ada transaksi offline yang berhasil disinkronkan.',
+            isError: true,
+          );
+        }
       }
     } on NetworkException catch (error) {
       if (!mounted || silent) return;
@@ -1807,11 +1825,13 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     final total = sales.fold<double>(0, (sum, sale) => sum + sale.netTotal);
     final itemCount = sales.fold<int>(
       0,
-      (sum, sale) => sum + sale.items.fold<int>(
-        0,
-        (qty, item) =>
-            qty + (item.quantity - item.returnedQuantity).clamp(0, 999999),
-      ),
+      (sum, sale) =>
+          sum +
+          sale.items.fold<int>(
+            0,
+            (qty, item) =>
+                qty + (item.quantity - item.returnedQuantity).clamp(0, 999999),
+          ),
     );
     final rows = <String>[
       centerReceiptText(
@@ -2215,6 +2235,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       onPrintDailySummary: _printDailySalesSummary,
       onPrintDailyReceipts: _printDailySaleReceipts,
       offlineSales: _offlineSales,
+      onForgetSyncedOfflineSales: _forgetSyncedOfflineSales,
       onOfflineReturn: _returnOfflineSale,
       trainingMode: _trainingMode,
       trainingSales: _trainingSales,
@@ -2255,6 +2276,20 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       onLockApp: _lockApp,
       onLogout: _logout,
     );
+  }
+
+  Future<void> _forgetSyncedOfflineSales(Iterable<String> references) async {
+    final normalizedReferences = references
+        .map((reference) => reference.trim().toUpperCase())
+        .where((reference) => reference.isNotEmpty)
+        .toSet();
+
+    if (normalizedReferences.isEmpty) {
+      return;
+    }
+
+    await _offlineSaleHistoryStore.removeMany(normalizedReferences);
+    await _loadOfflineSales();
   }
 
   Future<void> _openOfflineCenter() async {

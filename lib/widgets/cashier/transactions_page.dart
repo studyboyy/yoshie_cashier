@@ -14,6 +14,7 @@ class CashierTransactionsPage extends StatefulWidget {
     required this.onPrintDailySummary,
     required this.onPrintDailyReceipts,
     this.offlineSales = const <RecentSale>[],
+    this.onForgetSyncedOfflineSales,
     this.onOfflineReturn,
     this.trainingMode = false,
     this.trainingSales = const <RecentSale>[],
@@ -25,6 +26,8 @@ class CashierTransactionsPage extends StatefulWidget {
   final Future<void> Function(List<RecentSale> sales) onPrintDailySummary;
   final Future<void> Function(List<RecentSale> sales) onPrintDailyReceipts;
   final List<RecentSale> offlineSales;
+  final Future<void> Function(Iterable<String> references)?
+  onForgetSyncedOfflineSales;
   final Future<SaleReturnResult> Function(
     RecentSale sale,
     List<SaleReturnItemRequest> items,
@@ -71,7 +74,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
 
     return widget.api
         .recentSales()
-        .then((sales) {
+        .then((sales) async {
           if (widget.offlineSales.isEmpty) {
             return sales;
           }
@@ -79,10 +82,25 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
           final onlineInvoices = sales
               .map((sale) => sale.invoiceNumber)
               .toSet();
+          final syncedLocalReferences = sales
+              .map((sale) => sale.localReference?.trim().toUpperCase())
+              .whereType<String>()
+              .where((reference) => reference.isNotEmpty)
+              .toSet();
+
+          if (syncedLocalReferences.isNotEmpty) {
+            await widget.onForgetSyncedOfflineSales?.call(
+              syncedLocalReferences,
+            );
+          }
 
           return [
             ...widget.offlineSales.where(
-              (sale) => !onlineInvoices.contains(sale.invoiceNumber),
+              (sale) =>
+                  !onlineInvoices.contains(sale.invoiceNumber) &&
+                  !syncedLocalReferences.contains(
+                    sale.invoiceNumber.trim().toUpperCase(),
+                  ),
             ),
             ...sales,
           ];
@@ -259,10 +277,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
         }
 
         final sales = snapshot.data ?? [];
-        final total = sales.fold<double>(
-          0,
-          (sum, sale) => sum + sale.netTotal,
-        );
+        final total = sales.fold<double>(0, (sum, sale) => sum + sale.netTotal);
 
         return ListView(
           padding: const EdgeInsets.all(12),
@@ -450,7 +465,10 @@ class _SaleDetailSheet extends StatelessWidget {
                     label: 'Pembayaran',
                     value: sale.paymentMethod ?? '-',
                   ),
-                  _DetailRow(label: 'Total awal', value: rupiah(sale.grandTotal)),
+                  _DetailRow(
+                    label: 'Total awal',
+                    value: rupiah(sale.grandTotal),
+                  ),
                   if (sale.returnedTotal > 0)
                     _DetailRow(
                       label: 'Retur',
