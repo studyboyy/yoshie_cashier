@@ -51,7 +51,8 @@ class CashierProductPanel extends StatelessWidget {
         final mainCount = searchQuery.isEmpty
             ? '${favoriteProducts.length}/5'
             : '${products.length} hasil';
-        final compact = constraints.maxWidth < 330 || constraints.maxHeight < 520;
+        final compact =
+            constraints.maxWidth < 330 || constraints.maxHeight < 520;
         final resultMaxHeight = constraints.maxHeight < 520 ? 176.0 : 260.0;
 
         return AppSurface(
@@ -85,7 +86,9 @@ class CashierProductPanel extends StatelessWidget {
                       controller: searchController,
                       focusNode: searchFocusNode,
                       autofocus: false,
-                      keyboardType: TextInputType.text,
+                      keyboardType: manualSearchKeyboard
+                          ? TextInputType.text
+                          : TextInputType.none,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
                         labelText: 'Cari / scan barcode',
@@ -119,7 +122,9 @@ class CashierProductPanel extends StatelessWidget {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.search),
                       ),

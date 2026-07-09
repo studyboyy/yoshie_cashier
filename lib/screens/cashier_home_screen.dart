@@ -380,6 +380,23 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     });
   }
 
+  void _enableManualSearchKeyboardFromTap() {
+    if (_manualSearchKeyboard) {
+      return;
+    }
+
+    setState(() => _manualSearchKeyboard = true);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_manualSearchKeyboard || _selectedTab != 1) {
+        return;
+      }
+
+      _searchFocusNode.requestFocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
+  }
+
   void _normalizeRedeemPoints() {
     if (_redeemController.text != '0') {
       _redeemController.text = '0';
@@ -2170,12 +2187,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       checkoutLoading: _checkoutLoading,
       message: _message,
       messageIsError: _messageIsError,
-      onSearchTap: () {
-        if (!_manualSearchKeyboard) {
-          setState(() => _manualSearchKeyboard = true);
-          SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-        }
-      },
+      onSearchTap: _enableManualSearchKeyboardFromTap,
       onSearchSubmitted: _searchOrScanProduct,
       onClearSearch: _clearSearch,
       onToggleKeyboard: _toggleManualSearchKeyboard,

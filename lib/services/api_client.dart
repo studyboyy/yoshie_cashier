@@ -248,14 +248,46 @@ class ApiClient {
         .toList();
   }
 
-  Future<List<RecentSale>> recentSales() async {
-    final response = await _get('/cashier/recent-sales');
+  Future<List<RecentSale>> recentSales({DateTime? date}) async {
+    final response = await _get(
+      '/cashier/recent-sales',
+      query: {
+        if (date != null)
+          'date':
+              '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+      },
+    );
     final items = response['data'] as List<dynamic>? ?? [];
 
     return items
         .whereType<Map<String, dynamic>>()
         .map(RecentSale.fromJson)
         .where((sale) => sale.id > 0)
+        .toList();
+  }
+
+  Future<List<OfflineSaleStatus>> offlineSaleStatuses(
+    Iterable<String> localReferences,
+  ) async {
+    final references = localReferences
+        .map((reference) => reference.trim())
+        .where((reference) => reference.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (references.isEmpty) {
+      return const <OfflineSaleStatus>[];
+    }
+
+    final response = await _post(
+      '/cashier/offline-sales/status',
+      body: {'local_references': references},
+    );
+    final items = response['data'] as List<dynamic>? ?? [];
+
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(OfflineSaleStatus.fromJson)
         .toList();
   }
 
@@ -539,4 +571,29 @@ class SyncedOfflineSale {
 
   final int saleId;
   final String invoiceNumber;
+}
+
+class OfflineSaleStatus {
+  const OfflineSaleStatus({
+    required this.localReference,
+    required this.status,
+    this.serverReference,
+    this.errorMessage,
+  });
+
+  final String localReference;
+  final String status;
+  final String? serverReference;
+  final String? errorMessage;
+
+  bool get isSynced => status == 'synced';
+
+  factory OfflineSaleStatus.fromJson(Map<String, dynamic> json) {
+    return OfflineSaleStatus(
+      localReference: json['local_reference'] as String? ?? '',
+      status: json['status'] as String? ?? 'not_received',
+      serverReference: json['server_reference'] as String?,
+      errorMessage: json['error_message'] as String?,
+    );
+  }
 }

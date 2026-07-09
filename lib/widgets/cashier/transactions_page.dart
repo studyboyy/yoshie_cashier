@@ -50,6 +50,7 @@ class CashierTransactionsPage extends StatefulWidget {
 
 class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
   late Future<List<RecentSale>> _future;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -68,25 +69,42 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
   }
 
   Future<List<RecentSale>> _loadSales() {
+    final selectedDate = _dateOnly(_selectedDate);
+
     if (widget.trainingMode) {
-      return Future.value(widget.trainingSales);
+      return Future.value(
+        widget.trainingSales
+            .where((sale) => _isSameDate(sale.paidAt, selectedDate))
+            .toList(),
+      );
     }
 
     return widget.api
-        .recentSales()
+        .recentSales(date: selectedDate)
         .then((sales) async {
-          if (widget.offlineSales.isEmpty) {
+          final datedOfflineSales = widget.offlineSales
+              .where((sale) => _isSameDate(sale.paidAt, selectedDate))
+              .toList();
+
+          if (datedOfflineSales.isEmpty) {
             return sales;
           }
 
           final onlineInvoices = sales
               .map((sale) => sale.invoiceNumber)
               .toSet();
+          final offlineReferences = datedOfflineSales
+              .map((sale) => sale.invoiceNumber.trim())
+              .where((reference) => reference.isNotEmpty)
+              .toSet();
           final syncedLocalReferences = sales
               .map((sale) => sale.localReference?.trim().toUpperCase())
               .whereType<String>()
               .where((reference) => reference.isNotEmpty)
               .toSet();
+          syncedLocalReferences.addAll(
+            await _syncedOfflineReferences(offlineReferences),
+          );
 
           if (syncedLocalReferences.isNotEmpty) {
             await widget.onForgetSyncedOfflineSales?.call(
@@ -95,7 +113,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
           }
 
           return [
-            ...widget.offlineSales.where(
+            ...datedOfflineSales.where(
               (sale) =>
                   !onlineInvoices.contains(sale.invoiceNumber) &&
                   !syncedLocalReferences.contains(
@@ -107,15 +125,66 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
         })
         .catchError((error) {
           if (error is NetworkException && widget.offlineSales.isNotEmpty) {
-            return widget.offlineSales;
+            return widget.offlineSales
+                .where((sale) => _isSameDate(sale.paidAt, selectedDate))
+                .toList();
           }
 
           throw error;
         });
   }
 
+  Future<Set<String>> _syncedOfflineReferences(Set<String> references) async {
+    if (references.isEmpty) {
+      return const <String>{};
+    }
+
+    try {
+      final statuses = await widget.api.offlineSaleStatuses(references);
+
+      return statuses
+          .where((status) => status.isSynced)
+          .map((status) => status.localReference.trim().toUpperCase())
+          .where((reference) => reference.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
   void _reload() {
     setState(() {
+      _future = _loadSales();
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      helpText: 'Pilih tanggal transaksi',
+    );
+
+    if (picked == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = picked;
+      _future = _loadSales();
+    });
+  }
+
+  void _resetDateToToday() {
+    final today = DateTime.now();
+    if (_isSameDate(_selectedDate, today)) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = today;
       _future = _loadSales();
     });
   }
@@ -283,6 +352,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
           padding: const EdgeInsets.all(12),
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Column(
@@ -313,6 +383,24 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
                 ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                  label: Text(_formatSelectedDate(_selectedDate)),
+                ),
+                if (!_isSameDate(_selectedDate, DateTime.now()))
+                  TextButton.icon(
+                    onPressed: _resetDateToToday,
+                    icon: const Icon(Icons.today_outlined, size: 18),
+                    label: const Text('Hari ini'),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -377,6 +465,29 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
       },
     );
   }
+}
+
+DateTime _dateOnly(DateTime date) {
+  return DateTime(date.year, date.month, date.day);
+}
+
+bool _isSameDate(DateTime? left, DateTime right) {
+  if (left == null) {
+    return false;
+  }
+
+  return left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
+}
+
+String _formatSelectedDate(DateTime date) {
+  final today = DateTime.now();
+  if (_isSameDate(date, today)) {
+    return 'Hari ini';
+  }
+
+  return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 }
 
 class _SaleDetailSheet extends StatelessWidget {
