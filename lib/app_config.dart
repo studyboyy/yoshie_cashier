@@ -20,9 +20,16 @@ class AppConfig {
   static const offlineQueueMaxSize = 200;
 
   /// HTTP request timeout in seconds.
-  static const httpTimeoutSeconds = 20;
+  ///
+  /// Keep this short for the cashier app. If the hosting is slow/down, the app
+  /// should quickly fall back to local offline data instead of freezing the UI.
+  static const httpTimeoutSeconds = 5;
+
+  /// How long the app should pause automatic server calls after repeated
+  /// network/server failures.
+  static const networkFailureCooldownSeconds = 30;
 
   /// App version shown in the About / Account page.
-  static const appVersion = '1.1.23';
-  static const appBuild = 25;
+  static const appVersion = '1.1.36';
+  static const appBuild = 38;
 }

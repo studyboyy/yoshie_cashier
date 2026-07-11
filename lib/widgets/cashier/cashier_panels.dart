@@ -19,6 +19,7 @@ class CashierProductPanel extends StatelessWidget {
     required this.message,
     required this.messageIsError,
     required this.onSearchTap,
+    required this.onSearchTapOutside,
     required this.onSearchSubmitted,
     required this.onClearSearch,
     required this.onToggleKeyboard,
@@ -34,6 +35,7 @@ class CashierProductPanel extends StatelessWidget {
   final String? message;
   final bool messageIsError;
   final VoidCallback onSearchTap;
+  final VoidCallback onSearchTapOutside;
   final VoidCallback onSearchSubmitted;
   final VoidCallback onClearSearch;
   final VoidCallback onToggleKeyboard;
@@ -106,6 +108,7 @@ class CashierProductPanel extends StatelessWidget {
                         ),
                       ),
                       onTap: onSearchTap,
+                      onTapOutside: (_) => onSearchTapOutside(),
                       onSubmitted: (_) => onSearchSubmitted(),
                     ),
                   ),
@@ -490,6 +493,7 @@ class _CartList extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       shrinkWrap: true,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: cart.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {

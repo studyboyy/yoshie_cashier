@@ -350,6 +350,7 @@ class _CashierTransactionsPageState extends State<CashierTransactionsPage> {
 
         return ListView(
           padding: const EdgeInsets.all(12),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -885,6 +886,8 @@ class _ReturnSheetState extends State<_ReturnSheet> {
               controller: _reasonController,
               minLines: 1,
               maxLines: 2,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: 'Catatan retur',
                 prefixIcon: Icon(Icons.notes_outlined),

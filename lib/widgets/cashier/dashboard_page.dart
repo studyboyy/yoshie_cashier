@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/cashier_models.dart';
 import '../../models/user_profile.dart';
-import '../../services/api_client.dart';
 import '../../utils/formatters.dart';
 import '../common/app_ui.dart';
 import '../dashboard/dashboard_metric.dart';
@@ -12,12 +11,19 @@ class CashierDashboardPage extends StatelessWidget {
   const CashierDashboardPage({
     super.key,
     required this.user,
-    required this.api,
     required this.bootstrap,
+    required this.summary,
+    required this.summaryLoading,
+    required this.summaryRefreshing,
+    required this.availableProducts,
+    required this.availableProductsLoading,
+    required this.availableProductsError,
+    required this.onRetryAvailableProducts,
     required this.activeShift,
     required this.cartCount,
     required this.offlinePendingCount,
     required this.onOpenAvailableProducts,
+    required this.onOpenSoldTransactions,
     required this.onCashier,
     required this.onTransactions,
     required this.onShift,
@@ -25,12 +31,19 @@ class CashierDashboardPage extends StatelessWidget {
   });
 
   final UserProfile user;
-  final ApiClient api;
   final CashierBootstrap? bootstrap;
+  final CashierSummary? summary;
+  final bool summaryLoading;
+  final bool summaryRefreshing;
+  final List<CashierProduct> availableProducts;
+  final bool availableProductsLoading;
+  final bool availableProductsError;
+  final VoidCallback onRetryAvailableProducts;
   final CashierShiftInfo? activeShift;
   final int cartCount;
   final int offlinePendingCount;
   final VoidCallback onOpenAvailableProducts;
+  final VoidCallback onOpenSoldTransactions;
   final VoidCallback onCashier;
   final VoidCallback onTransactions;
   final VoidCallback onShift;
@@ -40,6 +53,7 @@ class CashierDashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final lowStock =
         bootstrap?.stockAlerts.where((stock) => stock.isLow).length ?? 0;
+    final isLoading = summary == null && summaryLoading;
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -66,81 +80,82 @@ class CashierDashboardPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              FutureBuilder<CashierSummary>(
-                future: api.summary(),
-                builder: (context, snapshot) {
-                  final summary = snapshot.data;
-                  final isLoading =
-                      snapshot.connectionState == ConnectionState.waiting;
-
-                  return DashboardMetricGrid(
-                    children: [
-                      DashboardMetric(
-                        icon: Icons.payments_outlined,
-                        label: 'Penjualan hari ini',
-                        value: isLoading
-                            ? 'Memuat...'
-                            : rupiah(summary?.todaySalesTotal ?? 0),
-                        color: const Color(0xFF047857),
-                      ),
-                      DashboardMetric(
-                        icon: Icons.receipt_long_outlined,
-                        label: 'Transaksi hari ini',
-                        value: isLoading
-                            ? 'Memuat...'
-                            : '${summary?.todaySalesCount ?? 0} trx',
-                        color: const Color(0xFF4F46E5),
-                      ),
-                      DashboardMetric(
-                        icon: Icons.shopping_bag_outlined,
-                        label: 'Item terjual',
-                        value: isLoading
-                            ? 'Memuat...'
-                            : '${summary?.todayItemsCount ?? 0} item',
-                        color: const Color(0xFF7C3AED),
-                      ),
-                      DashboardMetric(
-                        icon: Icons.storefront_outlined,
-                        label: 'Produk tersedia',
-                        value: isLoading
-                            ? 'Memuat...'
-                            : '${summary?.availableProductCount ?? 0} produk',
-                        color: const Color(0xFF0F766E),
-                        onTap: onOpenAvailableProducts,
-                      ),
-                      DashboardMetric(
-                        icon: Icons.inventory_2_outlined,
-                        label: 'Stok rendah',
-                        value: isLoading
-                            ? '$lowStock produk'
-                            : '${summary?.lowStockCount ?? lowStock} produk',
-                        color: const Color(0xFFDC2626),
-                      ),
-                      DashboardMetric(
-                        icon: activeShift == null
-                            ? Icons.lock_clock_outlined
-                            : Icons.lock_open_outlined,
-                        label: 'Shift',
-                        value: activeShift == null ? 'Belum buka' : 'Aktif',
-                        color: activeShift == null
-                            ? const Color(0xFFB45309)
-                            : const Color(0xFF047857),
-                      ),
-                      DashboardMetric(
-                        icon: Icons.point_of_sale,
-                        label: 'Keranjang',
-                        value: '$cartCount item',
-                        color: const Color(0xFF4F46E5),
-                      ),
-                      DashboardMetric(
-                        icon: Icons.cloud_upload_outlined,
-                        label: 'Offline',
-                        value: '$offlinePendingCount pending',
-                        color: const Color(0xFFB45309),
-                      ),
-                    ],
-                  );
-                },
+              DashboardMetricGrid(
+                children: [
+                  DashboardMetric(
+                    icon: Icons.payments_outlined,
+                    label: 'Penjualan hari ini',
+                    value: isLoading
+                        ? 'Memuat...'
+                        : rupiah(summary?.todaySalesTotal ?? 0),
+                    color: const Color(0xFF047857),
+                  ),
+                  DashboardMetric(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Transaksi hari ini',
+                    value: isLoading
+                        ? 'Memuat...'
+                        : '${summary?.todaySalesCount ?? 0} trx',
+                    color: const Color(0xFF4F46E5),
+                    onTap: onOpenSoldTransactions,
+                  ),
+                  DashboardMetric(
+                    icon: Icons.shopping_bag_outlined,
+                    label: 'Item terjual',
+                    value: isLoading
+                        ? 'Memuat...'
+                        : '${summary?.todayItemsCount ?? 0} item',
+                    color: const Color(0xFF7C3AED),
+                  ),
+                  DashboardMetric(
+                    icon: Icons.storefront_outlined,
+                    label: 'Produk tersedia',
+                    value: isLoading
+                        ? 'Memuat...'
+                        : '${summary?.availableProductCount ?? 0} produk',
+                    color: const Color(0xFF0F766E),
+                    onTap: onOpenAvailableProducts,
+                  ),
+                  DashboardMetric(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Stok rendah',
+                    value: isLoading
+                        ? '$lowStock produk'
+                        : '${summary?.lowStockCount ?? lowStock} produk',
+                    color: const Color(0xFFDC2626),
+                  ),
+                  DashboardMetric(
+                    icon: activeShift == null
+                        ? Icons.lock_clock_outlined
+                        : Icons.lock_open_outlined,
+                    label: 'Shift',
+                    value: activeShift == null ? 'Belum buka' : 'Aktif',
+                    color: activeShift == null
+                        ? const Color(0xFFB45309)
+                        : const Color(0xFF047857),
+                  ),
+                  DashboardMetric(
+                    icon: Icons.point_of_sale,
+                    label: 'Keranjang',
+                    value: '$cartCount item',
+                    color: const Color(0xFF4F46E5),
+                  ),
+                  DashboardMetric(
+                    icon: Icons.cloud_upload_outlined,
+                    label: 'Offline',
+                    value: '$offlinePendingCount pending',
+                    color: const Color(0xFFB45309),
+                  ),
+                ],
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: summaryRefreshing && summary != null
+                    ? const Padding(
+                        padding: EdgeInsets.only(top: 10),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -153,24 +168,15 @@ class CashierDashboardPage extends StatelessWidget {
           onSync: onSync,
         ),
         const SizedBox(height: 12),
-        FutureBuilder<List<CashierProduct>>(
-          future: api.availableProducts(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData) {
-              return const _BranchStockPanel.loading();
-            }
-
-            if (snapshot.hasError) {
-              return _BranchStockPanel.error(onRetry: onOpenAvailableProducts);
-            }
-
-            return _BranchStockPanel(
-              products: snapshot.data ?? const [],
-              onOpenDetails: onOpenAvailableProducts,
-            );
-          },
-        ),
+        if (availableProductsLoading && availableProducts.isEmpty)
+          const _BranchStockPanel.loading()
+        else if (availableProductsError && availableProducts.isEmpty)
+          _BranchStockPanel.error(onRetry: onRetryAvailableProducts)
+        else
+          _BranchStockPanel(
+            products: availableProducts,
+            onOpenDetails: onOpenAvailableProducts,
+          ),
       ],
     );
   }

@@ -58,11 +58,14 @@ class CashierCheckoutController {
     required int receiptColumns,
     required OfflineReceiptContext offlineReceiptContext,
   }) async {
+    final localReference = OfflineSaleDraft.nextLocalReference();
+
     try {
       final result = await api.checkout(
         items: items,
         paymentMethodId: paymentMethod.id,
         amount: amount,
+        localReference: localReference,
         referenceNumber: referenceNumber,
         customerId: customerId,
         redeemPoints: redeemPoints,
@@ -78,6 +81,7 @@ class CashierCheckoutController {
         referenceNumber: referenceNumber,
         customerId: customerId,
         redeemPoints: redeemPoints,
+        localReference: localReference,
       );
 
       await offlineQueue.enqueue(draft);

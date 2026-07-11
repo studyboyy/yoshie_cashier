@@ -141,6 +141,7 @@ class _ShiftSheetState extends State<ShiftSheet> {
           TextField(
             controller: _cashController,
             keyboardType: TextInputType.number,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: InputDecoration(
               labelText: shift == null ? 'Modal awal' : 'Kas fisik penutupan',
               prefixIcon: const Icon(Icons.payments_outlined),
@@ -150,6 +151,7 @@ class _ShiftSheetState extends State<ShiftSheet> {
           TextField(
             controller: _notesController,
             maxLines: 2,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'Catatan',
               hintText: 'Opsional',

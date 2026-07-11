@@ -231,6 +231,16 @@ class CashierSummary {
       lowStockCount: _asInt(json['low_stock_count']),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'today_sales_total': todaySalesTotal,
+      'today_sales_count': todaySalesCount,
+      'today_items_count': todayItemsCount,
+      'available_product_count': availableProductCount,
+      'low_stock_count': lowStockCount,
+    };
+  }
 }
 
 class CashierProduct {
@@ -320,6 +330,38 @@ class CashierProduct {
       'price_fmt': priceText,
       'stock': stock,
     };
+  }
+
+  CashierProduct copyWith({
+    int? id,
+    String? name,
+    String? sku,
+    String? barcode,
+    String? productType,
+    String? color,
+    String? size,
+    String? variantName,
+    bool? canNegotiate,
+    String? unit,
+    double? price,
+    String? priceText,
+    int? stock,
+  }) {
+    return CashierProduct(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      sku: sku ?? this.sku,
+      barcode: barcode ?? this.barcode,
+      productType: productType ?? this.productType,
+      color: color ?? this.color,
+      size: size ?? this.size,
+      variantName: variantName ?? this.variantName,
+      canNegotiate: canNegotiate ?? this.canNegotiate,
+      unit: unit ?? this.unit,
+      price: price ?? this.price,
+      priceText: priceText ?? this.priceText,
+      stock: stock ?? this.stock,
+    );
   }
 }
 

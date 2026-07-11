@@ -33,8 +33,14 @@ class OfflineSaleHistoryStore {
 
   Future<void> append(RecentSale sale) async {
     var sales = await all();
+    final invoiceNumber = _normalizeReference(sale.invoiceNumber);
+    final localReference = _normalizeReference(sale.localReference ?? '');
 
-    if (sales.any((item) => item.invoiceNumber == sale.invoiceNumber)) {
+    if (sales.any((item) {
+      return _normalizeReference(item.invoiceNumber) == invoiceNumber ||
+          (localReference.isNotEmpty &&
+              _normalizeReference(item.localReference ?? '') == localReference);
+    })) {
       return;
     }
 
@@ -48,22 +54,39 @@ class OfflineSaleHistoryStore {
 
   Future<void> update(RecentSale sale) async {
     final sales = await all();
+    final invoiceNumber = _normalizeReference(sale.invoiceNumber);
+    final localReference = _normalizeReference(sale.localReference ?? '');
     await _save(
-      sales
-          .map((item) => item.invoiceNumber == sale.invoiceNumber ? sale : item)
-          .toList(),
+      sales.map((item) {
+        final sameInvoice =
+            _normalizeReference(item.invoiceNumber) == invoiceNumber;
+        final sameLocalReference =
+            localReference.isNotEmpty &&
+            _normalizeReference(item.localReference ?? '') == localReference;
+
+        return sameInvoice || sameLocalReference ? sale : item;
+      }).toList(),
     );
   }
 
   Future<void> removeMany(Iterable<String> invoiceNumbers) async {
-    final removeSet = invoiceNumbers.toSet();
+    final removeSet = invoiceNumbers
+        .map(_normalizeReference)
+        .where((reference) => reference.isNotEmpty)
+        .toSet();
     if (removeSet.isEmpty) {
       return;
     }
 
     final sales = await all();
     await _save(
-      sales.where((sale) => !removeSet.contains(sale.invoiceNumber)).toList(),
+      sales.where((sale) {
+        final invoiceNumber = _normalizeReference(sale.invoiceNumber);
+        final localReference = _normalizeReference(sale.localReference ?? '');
+
+        return !removeSet.contains(invoiceNumber) &&
+            !removeSet.contains(localReference);
+      }).toList(),
     );
   }
 
@@ -73,5 +96,9 @@ class OfflineSaleHistoryStore {
       _storageKey,
       jsonEncode(sales.map((sale) => sale.toJson()).toList()),
     );
+  }
+
+  String _normalizeReference(String value) {
+    return value.trim().toUpperCase();
   }
 }

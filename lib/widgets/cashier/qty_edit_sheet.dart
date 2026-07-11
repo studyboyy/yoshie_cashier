@@ -82,6 +82,7 @@ class _QtyEditSheetState extends State<QtyEditSheet> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(5),
             ],
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: InputDecoration(
               labelText: 'Jumlah',
               hintText: '1 - ${widget.maxStock}',

@@ -77,6 +77,7 @@ class _CheckoutApiClient extends ApiClient {
     required List<CartItem> items,
     required int paymentMethodId,
     required double amount,
+    required String localReference,
     String? referenceNumber,
     int? customerId,
     int redeemPoints = 0,

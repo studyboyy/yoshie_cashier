@@ -41,7 +41,54 @@ class OfflineCatalogStore {
     );
   }
 
+  Future<void> applyLocalSale(List<Map<String, dynamic>> cartItems) async {
+    if (cartItems.isEmpty) {
+      return;
+    }
+
+    final quantities = <int, int>{};
+    for (final item in cartItems) {
+      final productId = _asInt(item['product_id']);
+      final quantity = _asInt(item['quantity']);
+      if (productId <= 0 || quantity <= 0) {
+        continue;
+      }
+
+      quantities[productId] = (quantities[productId] ?? 0) + quantity;
+    }
+
+    if (quantities.isEmpty) {
+      return;
+    }
+
+    final cachedProducts = await _readProducts(includeEmptyStock: true);
+    if (cachedProducts.isEmpty) {
+      return;
+    }
+
+    await saveProducts(
+      cachedProducts.map((product) {
+        final soldQuantity = quantities[product.id] ?? 0;
+        if (soldQuantity <= 0) {
+          return product;
+        }
+
+        final nextStock = (product.stock - soldQuantity)
+            .clamp(0, 1 << 31)
+            .toInt();
+
+        return product.copyWith(stock: nextStock);
+      }).toList(),
+    );
+  }
+
   Future<List<CashierProduct>> products() async {
+    return _readProducts(includeEmptyStock: false);
+  }
+
+  Future<List<CashierProduct>> _readProducts({
+    required bool includeEmptyStock,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_productsKey);
     if (raw == null || raw.isEmpty) {
@@ -53,7 +100,10 @@ class OfflineCatalogStore {
       return items
           .whereType<Map<String, dynamic>>()
           .map(CashierProduct.fromJson)
-          .where((product) => product.id > 0 && product.stock > 0)
+          .where(
+            (product) =>
+                product.id > 0 && (includeEmptyStock || product.stock > 0),
+          )
           .toList();
     } catch (_) {
       await prefs.remove(_productsKey);
@@ -125,6 +175,14 @@ class OfflineCatalogStore {
 
   String _normalize(String value) {
     return value.trim().toUpperCase();
+  }
+
+  int _asInt(Object? value) {
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
 

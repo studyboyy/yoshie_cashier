@@ -64,6 +64,9 @@ class _YosyCashierAppState extends State<YosyCashierApp>
   void _updateConnectivity(List<ConnectivityResult> results) {
     final offline =
         results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+    if (!offline) {
+      _api.resetNetworkGuard();
+    }
     if (mounted && offline != _isOffline) {
       setState(() => _isOffline = offline);
     }

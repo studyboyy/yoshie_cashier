@@ -146,6 +146,8 @@ class _AvailableProductsScreenState extends State<AvailableProductsScreen> {
                   child: TextField(
                     controller: _searchController,
                     textInputAction: TextInputAction.search,
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
                     decoration: InputDecoration(
                       labelText: 'Cari produk',
                       hintText: 'Nama, SKU, atau barcode',

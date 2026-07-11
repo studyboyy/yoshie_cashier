@@ -305,6 +305,7 @@ class _CashMovementFormState extends State<_CashMovementForm> {
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.next,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'Nominal',
               prefixText: 'Rp ',
@@ -315,6 +316,7 @@ class _CashMovementFormState extends State<_CashMovementForm> {
           TextField(
             controller: _categoryController,
             textInputAction: TextInputAction.next,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'Kategori',
               hintText: 'Opsional, contoh: Belanja, Modal',
@@ -326,6 +328,7 @@ class _CashMovementFormState extends State<_CashMovementForm> {
             controller: _notesController,
             textInputAction: TextInputAction.done,
             maxLines: 2,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'Keterangan',
               hintText: 'Wajib diisi',

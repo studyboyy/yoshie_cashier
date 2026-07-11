@@ -9,7 +9,9 @@ import '../app_config.dart';
 import '../models/cash_movement.dart';
 import '../models/cashier_models.dart';
 import 'offline_catalog_store.dart';
+import 'offline_sale_history_store.dart';
 import 'offline_sale_queue.dart';
+import 'network_guard.dart';
 import '../models/user_profile.dart';
 
 class ApiException implements Exception {
@@ -49,18 +51,28 @@ class UnauthorizedException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+  ApiClient({http.Client? httpClient, NetworkGuard? networkGuard})
+    : _httpClient = httpClient ?? http.Client(),
+      _networkGuard = networkGuard ?? NetworkGuard();
 
   static const _tokenKey = 'api_token';
   static const _userProfileKey = 'api_user_profile';
+  static const _summaryCacheKey = 'cashier_summary_cache';
 
   final http.Client _httpClient;
+  final NetworkGuard _networkGuard;
   final OfflineCatalogStore _offlineCatalog = OfflineCatalogStore();
   String? _token;
 
   String? get token => _token;
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
+  bool get isServerCoolingDown => _networkGuard.isCoolingDown;
+  NetworkGuardState get networkState => _networkGuard.state;
+  Stream<NetworkGuardState> get networkChanges => _networkGuard.changes;
+
+  void resetNetworkGuard() {
+    _networkGuard.reset();
+  }
 
   Future<UserProfile?> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
@@ -168,9 +180,123 @@ class ApiClient {
   }
 
   Future<CashierSummary> summary() async {
-    final response = await _get('/cashier/summary');
+    try {
+      final response = await _get('/cashier/summary');
+      final serverSummary = CashierSummary.fromJson(response);
+      final summary = await _summaryFromRecentSales(fallback: serverSummary);
+      await _saveSummaryCache(summary);
 
-    return CashierSummary.fromJson(response);
+      return summary;
+    } on NetworkException {
+      return await _cachedSummary() ?? await _offlineSummary();
+    }
+  }
+
+  Future<CashierSummary> _summaryFromRecentSales({
+    required CashierSummary fallback,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final response = await _get(
+        '/cashier/recent-sales',
+        query: {
+          'date':
+              '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        },
+      );
+      final items = response['data'] as List<dynamic>? ?? [];
+      final sales = items
+          .whereType<Map<String, dynamic>>()
+          .map(RecentSale.fromJson)
+          .where((sale) => sale.id > 0)
+          .toList();
+
+      if (sales.isEmpty) {
+        return fallback;
+      }
+
+      return CashierSummary(
+        todaySalesTotal: sales.fold<double>(
+          0,
+          (total, sale) => total + sale.netTotal,
+        ),
+        todaySalesCount: sales.length,
+        todayItemsCount: sales.fold<int>(
+          0,
+          (total, sale) =>
+              total +
+              sale.items.fold<int>(0, (sum, item) => sum + item.quantity),
+        ),
+        availableProductCount: fallback.availableProductCount,
+        lowStockCount: fallback.lowStockCount,
+      );
+    } on NetworkException {
+      return fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  Future<void> _saveSummaryCache(CashierSummary summary) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _summaryCacheKey,
+      jsonEncode({
+        'cached_at': DateTime.now().toIso8601String(),
+        'summary': summary.toJson(),
+      }),
+    );
+  }
+
+  Future<CashierSummary?> _cachedSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_summaryCacheKey);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      final summary = json['summary'];
+      if (summary is Map<String, dynamic>) {
+        return CashierSummary.fromJson(summary);
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<CashierSummary> _offlineSummary() async {
+    final history = await const OfflineSaleHistoryStore().all();
+    final products = await _offlineCatalog.products();
+    final now = DateTime.now();
+    final todaySales = history.where((sale) {
+      final paidAt = sale.paidAt;
+      if (paidAt == null) {
+        return false;
+      }
+
+      return paidAt.year == now.year &&
+          paidAt.month == now.month &&
+          paidAt.day == now.day;
+    }).toList();
+
+    return CashierSummary(
+      todaySalesTotal: todaySales.fold<double>(
+        0,
+        (total, sale) => total + sale.netTotal,
+      ),
+      todaySalesCount: todaySales.length,
+      todayItemsCount: todaySales.fold<int>(
+        0,
+        (total, sale) =>
+            total + sale.items.fold<int>(0, (sum, item) => sum + item.quantity),
+      ),
+      availableProductCount: products.length,
+      lowStockCount: products.where((product) => product.stock <= 3).length,
+    );
   }
 
   Future<List<CashierProduct>> searchProducts(String search) async {
@@ -249,21 +375,39 @@ class ApiClient {
   }
 
   Future<List<RecentSale>> recentSales({DateTime? date}) async {
-    final response = await _get(
-      '/cashier/recent-sales',
-      query: {
-        if (date != null)
-          'date':
-              '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-      },
-    );
-    final items = response['data'] as List<dynamic>? ?? [];
+    try {
+      final response = await _get(
+        '/cashier/recent-sales',
+        query: {
+          if (date != null)
+            'date':
+                '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+        },
+      );
+      final items = response['data'] as List<dynamic>? ?? [];
 
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RecentSale.fromJson)
-        .where((sale) => sale.id > 0)
-        .toList();
+      return items
+          .whereType<Map<String, dynamic>>()
+          .map(RecentSale.fromJson)
+          .where((sale) => sale.id > 0)
+          .toList();
+    } on NetworkException {
+      final offlineSales = await const OfflineSaleHistoryStore().all();
+      if (date == null) {
+        return offlineSales;
+      }
+
+      return offlineSales.where((sale) {
+        final paidAt = sale.paidAt;
+        if (paidAt == null) {
+          return false;
+        }
+
+        return paidAt.year == date.year &&
+            paidAt.month == date.month &&
+            paidAt.day == date.day;
+      }).toList();
+    }
   }
 
   Future<List<OfflineSaleStatus>> offlineSaleStatuses(
@@ -367,6 +511,7 @@ class ApiClient {
     required List<CartItem> items,
     required int paymentMethodId,
     required double amount,
+    required String localReference,
     String? referenceNumber,
     int? customerId,
     int redeemPoints = 0,
@@ -378,6 +523,7 @@ class ApiClient {
         'items': items.map((item) => item.toCheckoutJson()).toList(),
         'payment_method_id': paymentMethodId,
         'amount': amount,
+        'local_reference': localReference,
         if (referenceNumber != null && referenceNumber.trim().isNotEmpty)
           'reference_number': referenceNumber.trim(),
         'customer_id': customerId,
@@ -464,17 +610,27 @@ class ApiClient {
           .get(uri, headers: _headers(authenticated: true))
           .timeout(_timeout);
 
-      return _decode(response);
-    } on SocketException {
-      throw const NetworkException('Koneksi internet tidak tersedia.');
+      final decoded = _decode(response);
+      _networkGuard.recordSuccess();
+
+      return decoded;
+    } on SocketException catch (error) {
+      final message = _socketFailureMessage(error);
+      _networkGuard.recordFailure(message);
+      throw NetworkException(message);
     } on http.ClientException {
+      _networkGuard.recordFailure('Tidak bisa terhubung ke server.');
       throw const NetworkException('Tidak bisa terhubung ke server.');
     } on TimeoutException {
+      _networkGuard.recordFailure('Koneksi ke server terlalu lama.');
       throw const NetworkException(
         'Koneksi ke server terlalu lama. Coba lagi.',
       );
     } on FormatException {
-      throw const ApiException('Response server tidak valid.');
+      _networkGuard.recordFailure('Response server tidak valid.');
+      throw const NetworkException(
+        'Server sedang tidak stabil. Mode offline dipakai dulu.',
+      );
     }
   }
 
@@ -492,17 +648,27 @@ class ApiClient {
           )
           .timeout(_timeout);
 
-      return _decode(response);
-    } on SocketException {
-      throw const NetworkException('Koneksi internet tidak tersedia.');
+      final decoded = _decode(response);
+      _networkGuard.recordSuccess();
+
+      return decoded;
+    } on SocketException catch (error) {
+      final message = _socketFailureMessage(error);
+      _networkGuard.recordFailure(message);
+      throw NetworkException(message);
     } on http.ClientException {
+      _networkGuard.recordFailure('Tidak bisa terhubung ke server.');
       throw const NetworkException('Tidak bisa terhubung ke server.');
     } on TimeoutException {
+      _networkGuard.recordFailure('Koneksi ke server terlalu lama.');
       throw const NetworkException(
         'Koneksi ke server terlalu lama. Coba lagi.',
       );
     } on FormatException {
-      throw const ApiException('Response server tidak valid.');
+      _networkGuard.recordFailure('Response server tidak valid.');
+      throw const NetworkException(
+        'Server sedang tidak stabil. Mode offline dipakai dulu.',
+      );
     }
   }
 
@@ -512,6 +678,22 @@ class ApiClient {
       'Content-Type': 'application/json',
       if (authenticated && _token != null) 'Authorization': 'Bearer $_token',
     };
+  }
+
+  String _socketFailureMessage(SocketException error) {
+    final raw = [
+      error.message,
+      error.osError?.message,
+    ].whereType<String>().join(' ').toLowerCase();
+
+    if (raw.contains('failed host lookup') ||
+        raw.contains('network is unreachable') ||
+        raw.contains('no address associated') ||
+        raw.contains('temporary failure in name resolution')) {
+      return 'Koneksi internet atau DNS belum tersedia. Mode offline dipakai dulu.';
+    }
+
+    return 'Server belum bisa dihubungi. Mode offline dipakai dulu.';
   }
 
   Map<String, dynamic> _decode(http.Response response) {
@@ -530,6 +712,13 @@ class ApiClient {
         : jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode >= 400) {
+      if (response.statusCode >= 500) {
+        _networkGuard.recordFailure('Server error (${response.statusCode}).');
+        throw NetworkException(
+          'Server sedang gangguan (${response.statusCode}). Mode offline dipakai dulu.',
+        );
+      }
+
       final errors = body['errors'] as Map<String, dynamic>?;
       final firstError = errors == null || errors.isEmpty
           ? null

@@ -91,13 +91,19 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   CashierBootstrap? _bootstrap;
+  CashierSummary? _cashierSummary;
   CashierShiftInfo? _activeShift;
   PaymentMethod? _selectedPaymentMethod;
   List<CashierProduct> _favoriteProducts = <CashierProduct>[];
+  List<CashierProduct> _dashboardProducts = <CashierProduct>[];
   List<RecentSale> _trainingSales = <RecentSale>[];
   List<RecentSale> _offlineSales = <RecentSale>[];
 
   bool _loading = true;
+  bool _summaryLoading = false;
+  bool _summaryRefreshing = false;
+  bool _dashboardProductsLoading = false;
+  bool _dashboardProductsError = false;
   bool _checkoutLoading = false;
   bool _syncingOffline = false;
   bool _loadingShift = false;
@@ -155,6 +161,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     _startConnectivityAutoSync();
     _startOfflineAutoSync();
     _loadBootstrap();
+    unawaited(_loadSummary());
+    unawaited(_loadDashboardProducts());
     unawaited(_loadFavoriteProducts());
     _refocusSearch();
   }
@@ -267,6 +275,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       if (cameBackOnline) {
         unawaited(_syncOfflineQueue(silent: true));
         unawaited(_loadBootstrap());
+        unawaited(_loadSummary(silent: true));
+        unawaited(_loadDashboardProducts(silent: true));
         unawaited(_loadFavoriteProducts());
       }
     });
@@ -364,7 +374,12 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   }
 
   void _toggleManualSearchKeyboard() {
-    setState(() => _manualSearchKeyboard = !_manualSearchKeyboard);
+    final enableKeyboard = !_manualSearchKeyboard;
+    if (enableKeyboard) {
+      _searchFocusNode.unfocus();
+    }
+
+    setState(() => _manualSearchKeyboard = enableKeyboard);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -385,6 +400,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       return;
     }
 
+    _searchFocusNode.unfocus();
     setState(() => _manualSearchKeyboard = true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -393,8 +409,29 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       }
 
       _searchFocusNode.requestFocus();
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      Future<void>.delayed(const Duration(milliseconds: 40), () {
+        if (!mounted || !_manualSearchKeyboard || _selectedTab != 1) {
+          return;
+        }
+
+        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      });
     });
+  }
+
+  void _closeManualSearchKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+
+    if (!mounted || _selectedTab != 1) {
+      return;
+    }
+
+    if (_manualSearchKeyboard) {
+      setState(() => _manualSearchKeyboard = false);
+    }
+
+    _refocusSearch();
   }
 
   void _normalizeRedeemPoints() {
@@ -517,6 +554,19 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       return;
     }
 
+    if (widget.api.isServerCoolingDown) {
+      if (!silent) {
+        final seconds = widget.api.networkState.remainingCooldown.inSeconds
+            .clamp(1, 999);
+        _showMessage(
+          'Server sedang tidak stabil. $pendingCount transaksi tetap aman di offline dan akan dicoba lagi sekitar $seconds detik.',
+          isError: true,
+        );
+      }
+      await _refreshOfflineCount();
+      return;
+    }
+
     setState(() => _syncingOffline = true);
     if (!silent) {
       _showMessage(
@@ -532,6 +582,10 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
       await _offlineSaleHistoryStore.removeMany(result.syncedReferences);
       await _loadOfflineSales();
+      if (result.syncedCount > 0) {
+        unawaited(_loadSummary(silent: true));
+        unawaited(_loadDashboardProducts(silent: true));
+      }
 
       if (!silent) {
         if (result.syncedCount > 0 && result.failedCount == 0) {
@@ -569,6 +623,87 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     }
   }
 
+  Future<void> _loadSummary({bool silent = false}) async {
+    if (!mounted) {
+      return;
+    }
+
+    final hasCachedSummary = _cashierSummary != null;
+    setState(() {
+      _summaryLoading = !hasCachedSummary && (_summaryLoading || !silent);
+      _summaryRefreshing = hasCachedSummary || silent;
+    });
+
+    try {
+      final summary = await widget.api.summary();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _cashierSummary = summary);
+    } on NetworkException catch (error) {
+      if (!mounted || silent || hasCachedSummary) {
+        return;
+      }
+      _handleError(error);
+    } catch (error) {
+      if (!mounted || silent || hasCachedSummary) {
+        return;
+      }
+      _handleError(error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _summaryLoading = false;
+          _summaryRefreshing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadDashboardProducts({bool silent = false}) async {
+    if (!mounted) {
+      return;
+    }
+
+    final hasCachedProducts = _dashboardProducts.isNotEmpty;
+    setState(() {
+      _dashboardProductsLoading = !hasCachedProducts && !silent;
+      _dashboardProductsError = false;
+    });
+
+    try {
+      final products = await widget.api.availableProducts();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _dashboardProducts = products);
+    } on NetworkException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _dashboardProductsError = !hasCachedProducts);
+      if (!silent && !hasCachedProducts) {
+        _handleError(error);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _dashboardProductsError = !hasCachedProducts);
+      if (!silent && !hasCachedProducts) {
+        _handleError(error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _dashboardProductsLoading = false);
+      }
+    }
+  }
+
   Future<void> _loadBootstrap() async {
     setState(() {
       _loading = true;
@@ -592,6 +727,8 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       }
 
       unawaited(_loadShift(silent: true));
+      unawaited(_loadSummary(silent: true));
+      unawaited(_loadDashboardProducts(silent: true));
       unawaited(widget.api.refreshOfflineCatalog());
       unawaited(_loadFavoriteProducts());
       unawaited(_syncOfflineQueue(silent: true));
@@ -1032,6 +1169,15 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     });
 
     try {
+      final soldItems = _cart
+          .map(
+            (item) => CartItem(
+              product: item.product,
+              quantity: item.quantity,
+              negotiatedUnitPrice: item.negotiatedUnitPrice,
+            ),
+          )
+          .toList(growable: false);
       final printerSettings = await _receiptPrinter.settings();
       final receiptContext = OfflineReceiptContext(
         outletName: _bootstrap?.outlet.name ?? '-',
@@ -1090,20 +1236,31 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
       if (outcome.mode == CashierCheckoutMode.online) {
         final result = outcome.result!;
+        _applySaleToDashboardSummary(result, soldItems);
+        _applySoldItemsToDashboardProducts(soldItems);
         _showMessage(
           'Transaksi ${result.invoiceNumber} berhasil.',
           isError: false,
         );
+        unawaited(_loadSummary(silent: true));
+        unawaited(_loadDashboardProducts(silent: true));
         unawaited(_runPostCheckoutPrinterActions(result, printerSettings));
         _showReceiptDialog(result);
       } else {
         final result = outcome.result!;
-        await _recordOfflineSale(result, paymentMethod);
+        await _recordOfflineSale(
+          result,
+          paymentMethod,
+          items: soldItems,
+          localReference: outcome.draft?.localReference,
+        );
 
         _showMessage(
           'Transaksi offline ${result.invoiceNumber} tersimpan.',
           isError: false,
         );
+        _applySaleToDashboardSummary(result, soldItems);
+        _applySoldItemsToDashboardProducts(soldItems);
         unawaited(_runPostCheckoutPrinterActions(result, printerSettings));
         _showReceiptDialog(result);
         await _refreshOfflineCount();
@@ -1116,6 +1273,63 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
         setState(() => _checkoutLoading = false);
       }
     }
+  }
+
+  void _applySaleToDashboardSummary(
+    CheckoutResult result,
+    List<CartItem> soldItems,
+  ) {
+    if (!mounted) {
+      return;
+    }
+
+    final current = _cashierSummary;
+    final soldQuantity = soldItems.fold<int>(
+      0,
+      (total, item) => total + item.quantity,
+    );
+
+    setState(() {
+      _cashierSummary = CashierSummary(
+        todaySalesTotal: (current?.todaySalesTotal ?? 0) + result.grandTotal,
+        todaySalesCount: (current?.todaySalesCount ?? 0) + 1,
+        todayItemsCount: (current?.todayItemsCount ?? 0) + soldQuantity,
+        availableProductCount: current?.availableProductCount ?? 0,
+        lowStockCount: current?.lowStockCount ?? 0,
+      );
+    });
+  }
+
+  void _applySoldItemsToDashboardProducts(List<CartItem> soldItems) {
+    if (!mounted || _dashboardProducts.isEmpty) {
+      return;
+    }
+
+    final soldByProductId = <int, int>{};
+    for (final item in soldItems) {
+      soldByProductId.update(
+        item.product.id,
+        (quantity) => quantity + item.quantity,
+        ifAbsent: () => item.quantity,
+      );
+    }
+
+    if (soldByProductId.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _dashboardProducts = _dashboardProducts.map((product) {
+        final soldQuantity = soldByProductId[product.id] ?? 0;
+        if (soldQuantity <= 0) {
+          return product;
+        }
+
+        return product.copyWith(
+          stock: (product.stock - soldQuantity).clamp(0, 1 << 31).toInt(),
+        );
+      }).toList(growable: false);
+    });
   }
 
   void _recordTrainingSale(CheckoutResult result, PaymentMethod paymentMethod) {
@@ -1157,15 +1371,22 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
   Future<void> _recordOfflineSale(
     CheckoutResult result,
-    PaymentMethod paymentMethod,
-  ) async {
+    PaymentMethod paymentMethod, {
+    required List<CartItem> items,
+    required String? localReference,
+  }) async {
     final sale = _localSaleFromCart(
       result: result,
       paymentMethod: paymentMethod,
       localOnly: true,
+      items: items,
+      localReference: localReference,
     );
 
     await _offlineSaleHistoryStore.append(sale);
+    await _offlineCatalogStore.applyLocalSale(
+      items.map((item) => item.toOfflineJson()).toList(growable: false),
+    );
     final sales = await _offlineSaleHistoryStore.all();
     if (!mounted) {
       return;
@@ -1178,9 +1399,11 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     required CheckoutResult result,
     required PaymentMethod paymentMethod,
     required bool localOnly,
+    required List<CartItem> items,
+    required String? localReference,
   }) {
     final baseId = DateTime.now().microsecondsSinceEpoch;
-    final items = _cart.asMap().entries.map((entry) {
+    final saleItems = items.asMap().entries.map((entry) {
       final index = entry.key;
       final item = entry.value;
 
@@ -1201,12 +1424,13 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
     return RecentSale(
       id: baseId,
       invoiceNumber: result.invoiceNumber,
+      localReference: localReference,
       paidAt: DateTime.now(),
       grandTotal: result.grandTotal,
       paidAmount: result.paidAmount,
       changeAmount: result.changeAmount,
       paymentMethod: paymentMethod.name,
-      items: items,
+      items: saleItems,
       receiptText: result.receiptText,
       localOnly: localOnly,
     );
@@ -2121,6 +2345,11 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   Future<void> _refreshCurrentTab() async {
     switch (_selectedTab) {
       case 0: // Dashboard
+        await Future.wait([
+          _loadBootstrap(),
+          _loadSummary(silent: _cashierSummary != null),
+          _loadDashboardProducts(silent: _dashboardProducts.isNotEmpty),
+        ]);
       case 1: // Kasir
         await _loadBootstrap();
       case 2: // Kas — widget rebuild sendiri via _CashMovementPageState._reload
@@ -2188,6 +2417,7 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
       message: _message,
       messageIsError: _messageIsError,
       onSearchTap: _enableManualSearchKeyboardFromTap,
+      onSearchTapOutside: _closeManualSearchKeyboard,
       onSearchSubmitted: _searchOrScanProduct,
       onClearSearch: _clearSearch,
       onToggleKeyboard: _toggleManualSearchKeyboard,
@@ -2212,12 +2442,19 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
   Widget _dashboardPage() {
     return CashierDashboardPage(
       user: widget.user,
-      api: widget.api,
       bootstrap: _bootstrap,
+      summary: _cashierSummary,
+      summaryLoading: _summaryLoading,
+      summaryRefreshing: _summaryRefreshing,
+      availableProducts: _dashboardProducts,
+      availableProductsLoading: _dashboardProductsLoading,
+      availableProductsError: _dashboardProductsError,
+      onRetryAvailableProducts: _loadDashboardProducts,
       activeShift: _activeShift,
       cartCount: _cartCount,
       offlinePendingCount: _offlinePendingCount,
       onOpenAvailableProducts: _openAvailableProducts,
+      onOpenSoldTransactions: _openSoldTransactions,
       onCashier: () => _selectTab(1),
       onTransactions: () => _selectTab(3),
       onShift: () => _selectTab(4),
@@ -2237,7 +2474,23 @@ class _CashierHomeScreenState extends State<CashierHomeScreen>
 
     if (changed == true) {
       await _loadFavoriteProducts();
+      unawaited(_loadDashboardProducts(silent: true));
     }
+  }
+
+  Future<void> _openSoldTransactions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SoldTransactionsPage(
+          api: widget.api,
+          onOpenReceipt: _openReceiptFromHistory,
+          offlineSales: _offlineSales,
+          onForgetSyncedOfflineSales: _forgetSyncedOfflineSales,
+          trainingMode: _trainingMode,
+          trainingSales: _trainingSales,
+        ),
+      ),
+    );
   }
 
   Widget _transactionsPage() {
@@ -3118,6 +3371,7 @@ class _NegotiationSheetState extends State<_NegotiationSheet> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             onChanged: (_) => setState(() {}),
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: InputDecoration(
               labelText: 'Harga jadi per pcs',
               prefixText: 'Rp ',

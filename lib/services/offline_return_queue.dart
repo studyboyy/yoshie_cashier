@@ -79,7 +79,22 @@ class OfflineReturnQueue {
 
   Future<void> enqueue(OfflineReturnDraft draft) async {
     final drafts = await all();
+    final duplicate = drafts.any((item) {
+      return _normalizeReference(item.localReference) ==
+              _normalizeReference(draft.localReference) &&
+          item.createdAt.toIso8601String() == draft.createdAt.toIso8601String();
+    });
+    if (duplicate) {
+      return;
+    }
+
     await _save([...drafts, draft]);
+  }
+
+  Future<int> count() async {
+    final drafts = await all();
+
+    return drafts.length;
   }
 
   Future<List<OfflineReturnDraft>> forReference(String localReference) async {
@@ -107,6 +122,10 @@ class OfflineReturnQueue {
       _storageKey,
       jsonEncode(drafts.map((draft) => draft.toJson()).toList()),
     );
+  }
+
+  String _normalizeReference(String value) {
+    return value.trim().toUpperCase();
   }
 }
 

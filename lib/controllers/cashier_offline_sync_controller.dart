@@ -44,6 +44,7 @@ class CashierOfflineSyncController {
 
     for (final draft in drafts) {
       try {
+        await offlineQueue.markAttempt(draft.localReference);
         final syncedSale = await api.syncOfflineSale(draft);
         final returnDrafts = await offlineReturnQueue.forReference(
           draft.localReference,
@@ -87,16 +88,22 @@ class CashierOfflineSyncController {
         await offlineQueue.remove(draft.localReference);
         synced++;
         syncedReferences.add(draft.localReference.toUpperCase());
+        if (syncedSale.invoiceNumber.trim().isNotEmpty) {
+          syncedReferences.add(syncedSale.invoiceNumber.toUpperCase());
+        }
       } on NetworkException {
+        await offlineQueue.markPending(draft.localReference);
         rethrow;
       } on UnauthorizedException {
+        await offlineQueue.markPending(draft.localReference);
         rethrow;
       } on ForbiddenException {
+        await offlineQueue.markPending(draft.localReference);
         rethrow;
       } catch (error) {
-        failedReferences[draft.localReference.toUpperCase()] = error
-            .toString()
-            .replaceFirst('Exception: ', '');
+        final message = error.toString().replaceFirst('Exception: ', '');
+        await offlineQueue.markFailed(draft.localReference, message);
+        failedReferences[draft.localReference.toUpperCase()] = message;
       }
     }
 

@@ -107,6 +107,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             onChanged: (_) => _refreshTotals(),
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: InputDecoration(
               labelText: 'Nominal bayar',
               hintText: rupiah(widget.payableTotal),
@@ -159,6 +160,8 @@ class _PaymentSheetState extends State<PaymentSheet> {
                     controller: widget.redeemController,
                     keyboardType: TextInputType.number,
                     onChanged: (_) => _refreshTotals(),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
                     decoration: InputDecoration(
                       labelText: 'Pakai poin',
                       helperText: 'Maksimal ${widget.maxRedeemPoints} poin',
@@ -186,6 +189,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
           TextField(
             controller: widget.referenceController,
             textInputAction: TextInputAction.done,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             decoration: const InputDecoration(
               labelText: 'No. referensi',
               hintText: 'Opsional',

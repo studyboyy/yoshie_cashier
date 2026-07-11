@@ -25,6 +25,7 @@ class CashierMainPage extends StatelessWidget {
     required this.message,
     required this.messageIsError,
     required this.onSearchTap,
+    required this.onSearchTapOutside,
     required this.onSearchSubmitted,
     required this.onClearSearch,
     required this.onToggleKeyboard,
@@ -49,6 +50,7 @@ class CashierMainPage extends StatelessWidget {
   final String? message;
   final bool messageIsError;
   final VoidCallback onSearchTap;
+  final VoidCallback onSearchTapOutside;
   final VoidCallback onSearchSubmitted;
   final VoidCallback onClearSearch;
   final VoidCallback onToggleKeyboard;
@@ -81,9 +83,7 @@ class CashierMainPage extends StatelessWidget {
         final availableWidth = width - (pagePadding * 2);
         final availableHeight = height - (pagePadding * 2);
         final canSplitHorizontally =
-            availableWidth >= 560 &&
-            availableHeight >= 340 &&
-            (width >= 720 || isLandscape);
+            availableWidth >= 560 && (width >= 720 || isLandscape);
         final cartWidth = _cartPanelWidth(availableWidth, gap);
         final compactCartHeight = _stackedCartHeight(availableHeight);
 
@@ -97,6 +97,7 @@ class CashierMainPage extends StatelessWidget {
           message: message,
           messageIsError: messageIsError,
           onSearchTap: onSearchTap,
+          onSearchTapOutside: onSearchTapOutside,
           onSearchSubmitted: onSearchSubmitted,
           onClearSearch: onClearSearch,
           onToggleKeyboard: onToggleKeyboard,
@@ -105,7 +106,7 @@ class CashierMainPage extends StatelessWidget {
 
         final Widget content = canSplitHorizontally
             ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(child: productPanel),
                   SizedBox(width: gap),
@@ -155,7 +156,12 @@ class CashierMainPage extends StatelessWidget {
                 ],
               );
 
-        return Padding(padding: EdgeInsets.all(pagePadding), child: content);
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.all(pagePadding),
+          child: content,
+        );
       },
     );
   }

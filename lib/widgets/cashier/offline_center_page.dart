@@ -121,6 +121,11 @@ class _OfflineCenterPageState extends State<OfflineCenterPage> {
               children: [
                 _StatusGrid(
                   pendingCount: data?.drafts.length ?? 0,
+                  failedCount:
+                      data?.drafts
+                          .where((draft) => draft.syncStatus == 'failed')
+                          .length ??
+                      0,
                   backupCount: data?.backupCount ?? 0,
                   productCount: data?.catalog.productCount ?? 0,
                   syncing: _syncingOffline || widget.syncing,
@@ -214,12 +219,14 @@ class _OfflineCenterPageState extends State<OfflineCenterPage> {
 class _StatusGrid extends StatelessWidget {
   const _StatusGrid({
     required this.pendingCount,
+    required this.failedCount,
     required this.backupCount,
     required this.productCount,
     required this.syncing,
   });
 
   final int pendingCount;
+  final int failedCount;
   final int backupCount;
   final int productCount;
   final bool syncing;
@@ -228,7 +235,11 @@ class _StatusGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 620 ? 3 : 1;
+        final columns = constraints.maxWidth >= 760
+            ? 4
+            : constraints.maxWidth >= 520
+            ? 2
+            : 1;
         return GridView.count(
           crossAxisCount: columns,
           shrinkWrap: true,
@@ -250,6 +261,14 @@ class _StatusGrid extends StatelessWidget {
               label: 'Backup transaksi',
               value: '$backupCount',
               color: const Color(0xFF4F46E5),
+            ),
+            _StatusCard(
+              icon: Icons.error_outline,
+              label: 'Sync gagal',
+              value: '$failedCount',
+              color: failedCount > 0
+                  ? const Color(0xFFEF4444)
+                  : const Color(0xFF10B981),
             ),
             _StatusCard(
               icon: syncing ? Icons.sync : Icons.schedule_outlined,
@@ -465,6 +484,8 @@ class _DraftTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status = _DraftStatus.fromDraft(draft);
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: const BoxDecoration(
@@ -477,24 +498,29 @@ class _DraftTile extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFBEB),
+              color: status.color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.pending_actions_outlined,
-              color: Color(0xFFD97706),
-            ),
+            child: Icon(status.icon, color: status.color),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  draft.localReference,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        draft.localReference,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusChip(status: status),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -504,6 +530,28 @@ class _DraftTile extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (draft.attemptCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Percobaan sync: ${draft.attemptCount}${draft.lastAttemptAt == null ? '' : ' • ${receiptDateTime(draft.lastAttemptAt!)}'}',
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                if ((draft.lastError ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    draft.lastError!.trim(),
+                    style: const TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
@@ -528,6 +576,63 @@ class _DraftTile extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.status});
+
+  final _DraftStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        status.label,
+        style: TextStyle(
+          color: status.color,
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+}
+
+class _DraftStatus {
+  const _DraftStatus({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  factory _DraftStatus.fromDraft(OfflineSaleDraft draft) {
+    return switch (draft.syncStatus) {
+      'syncing' => const _DraftStatus(
+        label: 'Syncing',
+        icon: Icons.sync,
+        color: Color(0xFF2563EB),
+      ),
+      'failed' => const _DraftStatus(
+        label: 'Gagal',
+        icon: Icons.error_outline,
+        color: Color(0xFFDC2626),
+      ),
+      _ => const _DraftStatus(
+        label: 'Pending',
+        icon: Icons.pending_actions_outlined,
+        color: Color(0xFFD97706),
+      ),
+    };
   }
 }
 
