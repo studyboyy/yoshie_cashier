@@ -71,13 +71,9 @@ class _SoldTransactionsPageState extends State<SoldTransactionsPage> {
             return sales;
           }
 
-          final onlineInvoices = sales
-              .map((sale) => sale.invoiceNumber.trim().toUpperCase())
-              .where((invoice) => invoice.isNotEmpty)
-              .toSet();
+          final onlineReferences = sales.expand(_saleReferences).toSet();
           final offlineReferences = datedOfflineSales
-              .map((sale) => sale.invoiceNumber.trim().toUpperCase())
-              .where((reference) => reference.isNotEmpty)
+              .expand(_saleReferences)
               .toSet();
           final syncedLocalReferences = sales
               .map((sale) => sale.localReference?.trim().toUpperCase())
@@ -89,17 +85,18 @@ class _SoldTransactionsPageState extends State<SoldTransactionsPage> {
           );
 
           if (syncedLocalReferences.isNotEmpty) {
-            await widget.onForgetSyncedOfflineSales?.call(
-              syncedLocalReferences,
-            );
+            await widget.onForgetSyncedOfflineSales?.call({
+              ...onlineReferences,
+              ...syncedLocalReferences,
+            });
           }
 
           return [
             ...datedOfflineSales.where((sale) {
-              final invoice = sale.invoiceNumber.trim().toUpperCase();
+              final references = _saleReferences(sale);
 
-              return !onlineInvoices.contains(invoice) &&
-                  !syncedLocalReferences.contains(invoice);
+              return references.intersection(onlineReferences).isEmpty &&
+                  references.intersection(syncedLocalReferences).isEmpty;
             }),
             ...sales,
           ];
@@ -131,6 +128,17 @@ class _SoldTransactionsPageState extends State<SoldTransactionsPage> {
     } catch (_) {
       return const <String>{};
     }
+  }
+
+  Set<String> _saleReferences(RecentSale sale) {
+    return {
+      _normalizeReference(sale.invoiceNumber),
+      _normalizeReference(sale.localReference),
+    }..remove('');
+  }
+
+  String _normalizeReference(String? value) {
+    return (value ?? '').trim().toUpperCase();
   }
 
   void _reload() {

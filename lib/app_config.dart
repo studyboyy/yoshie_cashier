@@ -30,6 +30,6 @@ class AppConfig {
   static const networkFailureCooldownSeconds = 30;
 
   /// App version shown in the About / Account page.
-  static const appVersion = '1.1.36';
-  static const appBuild = 38;
+  static const appVersion = '1.1.37';
+  static const appBuild = 39;
 }
